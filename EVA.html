@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EVA - Ascend Engineering Matrix</title>
+  
+  <!-- Shortcut Icons -->
+  <link rel="icon" type="image/png" href="EVAA.png">
+  <link rel="apple-touch-icon" href="EVAA.png">
+  <meta name="theme-color" content="#2d2d2d">
+  
+  <!-- Tailwind CSS for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React and ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  
+  <!-- Babel for translating JSX in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useReducer, createContext, useContext } = React;
+
+    // --- Global State & Persistence ---
+    const DEFAULT_STATE = {
+      tasks: [
+        { id: 1, title: "Debug Java Thread Sync", weight: 8, status: "todo", epic: "Hotel Mgmt", isToday: true, syllabusId: null },
+        { id: 2, title: "Draft Conic Sections", weight: 3, status: "todo", epic: "Math 301", isToday: false, syllabusId: 1 },
+        { id: 3, title: "Wire 3-bit Adder", weight: 9, status: "done", epic: "Digital Logic", isToday: true, syllabusId: 2 }
+      ],
+      inventory: [
+        { id: 1, name: "Breadboard (Large)", category: "Board", quantity: 2, minStock: 1, specs: "830 Tie Points" },
+        { id: 2, name: "74HC08 Quad AND", category: "IC", quantity: 5, minStock: 10, specs: "DIP-14" },
+        { id: 3, name: "Jumper Wires (M-M)", category: "Wire", quantity: 45, minStock: 20, specs: "Assorted Lengths" }
+      ],
+      syllabus: [
+        { id: 1, course: "MTH 301", deliverable: "Conic Sections Presentation", deadline: "2026-05-20", type: "Presentation", status: "active" },
+        { id: 2, course: "ENG 202", deliverable: "3-Bit Signed Calculator", deadline: "2026-06-01", type: "Lab Build", status: "active" }
+      ],
+      formulas: [
+        { id: 1, title: "Euler's Identity", code: "e^(i*pi) + 1 = 0", tags: "Math" },
+        { id: 2, title: "Ohm's Law", code: "V = I * R", tags: "Physics" }
+      ],
+      truthTables: [],
+      incidents: [
+        { id: 1, title: "NullPointerException in AuthModule", description: "Socket connection drops unexpectedly during payload transfer.", status: "active", steps: [{id: 101, text: "Isolate packet header", done: true}, {id: 102, text: "Verify token sync", done: false}] },
+        { id: 2, title: "VCC Short to Ground", description: "Breadboard rail overheating near 74HC08.", status: "pruned", steps: [{id: 201, text: "Check IC orientation", done: true}, {id: 202, text: "Meter continuity", done: true}] }
+      ],
+      stats: { clearancePoints: 0, efficiencyYield: 100 }
+    };
+
+    function matrixReducer(state, action) {
+      switch (action.type) {
+        case 'ADD_TASK': return { ...state, tasks: [...state.tasks, action.payload] };
+        case 'UPDATE_TASK': return { ...state, tasks: state.tasks.map(t => t.id === action.payload.id ? { ...t, ...action.payload } : t) };
+        case 'TOGGLE_TASK_STATUS': return { ...state, tasks: state.tasks.map(t => t.id === action.payload ? { ...t, status: t.status === 'todo' ? 'done' : 'todo' } : t) };
+        case 'TOGGLE_TASK_TODAY': return { ...state, tasks: state.tasks.map(t => t.id === action.payload ? { ...t, isToday: !t.isToday } : t) };
+        case 'DELETE_TASK': return { ...state, tasks: state.tasks.filter(t => t.id !== action.payload) };
+        case 'ADD_INVENTORY': return { ...state, inventory: [...state.inventory, action.payload] };
+        case 'UPDATE_INVENTORY': return { ...state, inventory: state.inventory.map(i => i.id === action.payload.id ? { ...i, ...action.payload } : i) };
+        case 'DELETE_INVENTORY': return { ...state, inventory: state.inventory.filter(i => i.id !== action.payload) };
+        case 'ADD_SYLLABUS': return { ...state, syllabus: [...state.syllabus, action.payload] };
+        case 'DELETE_SYLLABUS': 
+          const untetheredTasks = state.tasks.map(t => t.syllabusId === action.payload ? { ...t, syllabusId: null } : t);
+          return { ...state, syllabus: state.syllabus.filter(s => s.id !== action.payload), tasks: untetheredTasks };
+        case 'SPAWN_EPIC': return { ...state, tasks: [...state.tasks, ...action.payload] };
+        case 'SAVE_TRUTH_TABLE': return { ...state, truthTables: [...state.truthTables, action.payload] };
+        case 'DELETE_TRUTH_TABLE': return { ...state, truthTables: state.truthTables.filter(tt => tt.id !== action.payload) };
+        case 'ADD_FORMULA': return { ...state, formulas: [...state.formulas, action.payload] };
+        case 'DELETE_FORMULA': return { ...state, formulas: state.formulas.filter(f => f.id !== action.payload) };
+        // Incident Reducers
+        case 'ADD_INCIDENT': return { ...state, incidents: [...(state.incidents || []), action.payload] };
+        case 'DELETE_INCIDENT': return { ...state, incidents: state.incidents.filter(i => i.id !== action.payload) };
+        case 'PRUNE_INCIDENT': return { ...state, incidents: state.incidents.map(i => i.id === action.payload ? { ...i, status: 'pruned' } : i) };
+        case 'ADD_INCIDENT_STEP': return { ...state, incidents: state.incidents.map(i => i.id === action.payload.incidentId ? { ...i, steps: [...i.steps, action.payload.step] } : i) };
+        case 'TOGGLE_INCIDENT_STEP': return { ...state, incidents: state.incidents.map(i => i.id === action.payload.incidentId ? { ...i, steps: i.steps.map(s => s.id === action.payload.stepId ? { ...s, done: !s.done } : s) } : i) };
+        case 'ADD_CLEARANCE_POINTS': return { ...state, stats: { ...(state.stats || {}), clearancePoints: ((state.stats || {}).clearancePoints || 0) + action.payload } };
+        case 'IMPORT_STATE': return action.payload;
+        default: return state;
+      }
+    }
+
+    const MatrixContext = createContext();
+    const ToastContext = createContext();
+
+    const ToastProvider = ({ children }) => {
+      const [toasts, setToasts] = useState([]);
+
+      const addToast = (message, type = 'info') => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+      };
+
+      return (
+        <ToastContext.Provider value={addToast}>
+          {children}
+          <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-4 pointer-events-none">
+            {toasts.map(t => (
+              <div key={t.id} className="panel border-stamped p-4 flex items-center gap-4 animate-in fade-in slide-in-from-right-5 bg-[var(--card)] pointer-events-auto" style={{ minWidth: '320px' }}>
+                <div className={`status-dot ${t.type === 'warning' || t.type === 'success' ? 'blink' : ''}`} style={{ background: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}></div>
+                <span className="label !mb-0 text-sm tracking-widest" style={{ color: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}>
+                  {t.type === 'warning' ? '⚠ WARNING' : t.type === 'success' ? '✓ LOGGED' : '◆ NOTICE'}: {t.message}
+                </span>
+              </div>
+            ))}
+          </div>
+        </ToastContext.Provider>
+      );
+    };
+
+    // ----------------------------------------------------
+    // NEW MODULE: THE TEMPORAL LOOM (BRANCHING EDITION)
+    // ----------------------------------------------------
+    const TemporalLoom = () => {
+      const { state, dispatch } = useContext(MatrixContext);
+      
+      const timelineNodes = [];
+      const deadlines = [...new Set(state.syllabus.filter(s => s.deadline).map(s => s.deadline))].sort();
+
+      deadlines.forEach(date => {
+        const coursesDue = state.syllabus.filter(s => s.deadline === date);
+        let highComplexityTasks = 0;
+        let totalLoad = 0;
+
+        const coursesWithTasks = coursesDue.map(course => {
+          const linked = state.tasks.filter(t => t.syllabusId === course.id);
+          totalLoad += linked.reduce((sum, t) => sum + t.weight, 0);
+          highComplexityTasks += linked.filter(t => t.weight >= 8).length;
+          return { ...course, linkedTasks: linked };
+        });
+
+        const isCollision = highComplexityTasks >= 3;
+        timelineNodes.push({ date, courses: coursesWithTasks, highComplexityTasks, totalLoad, isCollision });
+      });
+
+      // Layout constants
+      const TIMELINE_Y = 250;
+      const NODE_SPACING = 340;
+
+      // Compute geometric positions for SVG overlay mapping
+      const nodesLayout = timelineNodes.map((node, i) => {
+        const x = 160 + i * NODE_SPACING;
+        // Undulate the timeline slightly up and down
+        const y = TIMELINE_Y + (i % 2 === 0 ? -30 : 30);
+        
+        const allTasks = [];
+        node.courses.forEach(c => allTasks.push(...c.linkedTasks));
+        
+        // Calculate branching coordinates for tasks
+        const tasksWithPos = allTasks.map((t, idx) => {
+           const isUp = idx % 2 === 0;
+           const k = Math.floor(idx / 2);
+           const taskX = x + 35 + (k * 20); // Step tasks forward incrementally
+           const taskY = isUp ? y - 70 - (k * 42) : y + 70 + (k * 42); // Step tasks outward
+           return { ...t, x: taskX, y: taskY, isUp };
+        });
+        
+        return { ...node, x, y, tasksWithPos };
+      });
+
+      // Construct continuous SVG curve for the central "Sacred Timeline"
+      let sacredPath = `M 0 ${TIMELINE_Y}`;
+      if (nodesLayout.length > 0) {
+         const first = nodesLayout[0];
+         sacredPath += ` C ${first.x / 2} ${TIMELINE_Y}, ${first.x / 2} ${first.y}, ${first.x} ${first.y}`;
+         for (let i = 0; i < nodesLayout.length - 1; i++) {
+            const curr = nodesLayout[i];
+            const next = nodesLayout[i+1];
+            const midX = (curr.x + next.x) / 2;
+            sacredPath += ` C ${midX} ${curr.y}, ${midX} ${next.y}, ${next.x} ${next.y}`;
+         }
+         const last = nodesLayout[nodesLayout.length - 1];
+         sacredPath += ` C ${last.x + 100} ${last.y}, ${last.x + 100} ${TIMELINE_Y}, ${last.x + 400} ${TIMELINE_Y}`;
+      }
+
+      const totalWidth = Math.max(1200, (nodesLayout.length * NODE_SPACING) + 400);
+
+      return (
+        <div className="flex flex-col bg-[var(--paper)] border-2 border-[var(--ink)] relative w-full h-[520px] overflow-hidden shadow-[4px_4px_0_0_var(--ink)]">
+          <div className="section-head sticky top-0 z-30 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
+            <div>
+              <div className="label">§IV</div>
+              <h2 className="text-4xl">TEMPORAL LOOM</h2>
+            </div>
+            <span className="label !mb-0 text-[10px] text-[var(--stamp)] animate-pulse">◆ MONITORING TIMELINE BRANCHES</span>
+          </div>
+          
+          <div className="flex-1 relative overflow-x-auto overflow-y-hidden custom-scrollbar bg-[var(--crt-bg)]" style={{ scrollBehavior: 'smooth' }}>
+            
+            {/* The Unified SVG Circuit Canvas */}
+            <svg className="absolute top-0 left-0 pointer-events-none z-0" style={{ width: totalWidth, height: '100%' }}>
+               <defs>
+                 <filter id="loom-glow" x="-20%" y="-20%" width="140%" height="140%">
+                   <feGaussianBlur stdDeviation="4" result="blur" />
+                   <feMerge>
+                     <feMergeNode in="blur"/>
+                     <feMergeNode in="SourceGraphic"/>
+                   </feMerge>
+                 </filter>
+                 <filter id="branch-glow" x="-20%" y="-20%" width="140%" height="140%">
+                   <feGaussianBlur stdDeviation="2" result="blur" />
+                   <feMerge>
+                     <feMergeNode in="blur"/>
+                     <feMergeNode in="SourceGraphic"/>
+                   </feMerge>
+                 </filter>
+                 <filter id="nexus-glow" x="-20%" y="-20%" width="140%" height="140%">
+                   <feGaussianBlur stdDeviation="6" result="blur" />
+                   <feComponentTransfer in="blur" result="glow1">
+                      <feFuncA type="linear" slope="3"/>
+                   </feComponentTransfer>
+                   <feMerge>
+                     <feMergeNode in="glow1"/>
+                     <feMergeNode in="SourceGraphic"/>
+                   </feMerge>
+                 </filter>
+               </defs>
+
+               {/* Grid Texture */}
+               <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                 <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--paper)" strokeWidth="0.5" opacity="0.05" />
+               </pattern>
+               <rect width="100%" height="100%" fill="url(#grid)" />
+
+               {/* Deep Space Background Core Line */}
+               <path d={sacredPath} fill="none" stroke="var(--paper)" strokeWidth="12" opacity="0.15" filter="url(#loom-glow)" />
+               <path d={sacredPath} fill="none" stroke="var(--paper)" strokeWidth="2" strokeDasharray="12 12" className="animate-flow" />
+
+               {/* Render Task Branches Extruding from Nodes */}
+               {nodesLayout.map(n => n.tasksWithPos.map(t => {
+                 const isDone = t.status === 'done';
+                 const color = isDone ? 'var(--muted-fg)' : 'var(--stamp)';
+                 const opacity = isDone ? '0.3' : '0.9';
+                 const strokeWidth = isDone ? "2" : "3";
+                 return (
+                   <path 
+                     key={t.id} 
+                     d={`M ${n.x} ${n.y} C ${n.x + 20} ${n.y}, ${t.x - 20} ${t.y}, ${t.x} ${t.y}`} 
+                     fill="none" 
+                     stroke={color} 
+                     strokeWidth={strokeWidth} 
+                     opacity={opacity}
+                     strokeDasharray={isDone ? "6 6" : "none"}
+                     filter={!isDone ? "url(#branch-glow)" : "none"}
+                   />
+                 );
+               }))}
+
+               {/* Aggressive Red Fractals for Nexus Collisions */}
+               {nodesLayout.filter(n => n.isCollision).map((n, i) => (
+                 <g key={i}>
+                   <path d={`M ${n.x} ${n.y} Q ${n.x - 50} ${n.y - 100}, ${n.x + 30} ${n.y - 180}`} fill="none" stroke="var(--destructive)" strokeWidth="4" filter="url(#nexus-glow)" opacity="0.8" strokeDasharray="15 10" className="blink" />
+                   <path d={`M ${n.x} ${n.y} Q ${n.x + 80} ${n.y + 90}, ${n.x - 20} ${n.y + 160}`} fill="none" stroke="var(--destructive)" strokeWidth="3" filter="url(#nexus-glow)" opacity="0.6" strokeDasharray="10 8" className="blink" />
+                   <circle cx={n.x} cy={n.y} r="18" fill="transparent" stroke="var(--destructive)" strokeWidth="2" filter="url(#nexus-glow)" className="blink" />
+                 </g>
+               ))}
+            </svg>
+
+            {/* HTML Component Overlays (Nodes & Tasks) */}
+            <div className="absolute top-0 left-0 h-full pointer-events-auto z-10" style={{ width: totalWidth }}>
+               {nodesLayout.length === 0 && (
+                  <div className="flex h-full w-full items-center justify-center text-[var(--crt-fg)] opacity-50 uppercase tracking-widest font-sans">
+                     [ TIMELINE SECURE. NO DEADLINES ANCHORED. ]
+                  </div>
+               )}
+               {nodesLayout.map(n => (
+                  <React.Fragment key={n.date}>
+                     {/* The Main Node Orb & Descriptor Block */}
+                     <div className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20" style={{ left: n.x, top: n.y }}>
+                        <div className={`w-8 h-8 rounded-full border-[3px] flex items-center justify-center m-auto ${n.isCollision ? 'border-[var(--destructive)] bg-[var(--crt-bg)] shadow-[0_0_20px_var(--destructive)] blink' : 'border-[var(--paper)] bg-[var(--ink)] shadow-[0_0_15px_rgba(255,255,255,0.2)]'}`}>
+                          <div className={`w-3 h-3 rounded-full ${n.isCollision ? 'bg-[var(--destructive)]' : 'bg-[var(--paper)]'}`}></div>
+                        </div>
+                        
+                        <div className="absolute top-12 left-1/2 transform -translate-x-1/2 bg-[var(--card)] border border-[var(--ink)] py-1 px-3 whitespace-nowrap flex flex-col items-center z-30 shadow-[2px_2px_0_0_var(--ink)]">
+                           <span className={`font-bold text-[13px] uppercase ${n.isCollision ? 'text-[var(--destructive)]' : 'text-[var(--ink)]'}`}>{n.date}</span>
+                           <span className="text-[9px] uppercase tracking-widest opacity-80">{n.courses.map(c=>c.course).join(' + ')}</span>
+                        </div>
+                     </div>
+
+                     {/* The Task Branch Terminals */}
+                     {n.tasksWithPos.map(t => {
+                        const isDone = t.status === 'done';
+                        return (
+                          <div 
+                            key={t.id} 
+                            className={`absolute transform -translate-y-1/2 flex flex-col justify-center cursor-pointer transition-all border-l-[3px] p-2 z-30 ${isDone ? 'bg-[var(--crt-bg)] border-[var(--muted-fg)] opacity-60' : 'bg-[var(--card)] border-[var(--stamp)] shadow-[4px_4px_0_0_rgba(0,0,0,0.5)] hover:-translate-y-[calc(50%+2px)] hover:-translate-x-[2px]'}`} 
+                            style={{ left: t.x + 5, top: t.y, width: '180px' }}
+                            onClick={() => dispatch({ type: 'TOGGLE_TASK_STATUS', payload: t.id })}
+                          >
+                             <div className="flex justify-between items-start mb-1">
+                               <span className={`text-[13px] font-bold shrink-0 ${isDone ? 'text-[var(--muted-fg)]' : 'text-[var(--stamp)]'}`}>
+                                 {isDone ? '[✕]' : '[ ]'}
+                               </span>
+                               <span className="text-[9px] border border-current px-1 font-bold">W:{t.weight}</span>
+                             </div>
+                             <span className={`text-[11px] uppercase font-bold tracking-wider leading-snug line-clamp-2 ${isDone ? 'line-through text-[var(--muted-fg)]' : 'text-[var(--ink)]'}`} title={t.title}>
+                               {t.title}
+                             </span>
+                          </div>
+                        );
+                     })}
+                  </React.Fragment>
+               ))}
+            </div>
+
+          </div>
+        </div>
+      );
+    };
+
+    // ----------------------------------------------------
+    // NEW MODULE: NEXUS INCIDENT LEDGER
+    // ----------------------------------------------------
+    const NexusLedger = () => {
+      const { state, dispatch } = useContext(MatrixContext);
+      const toast = useContext(ToastContext);
+      const [newIncident, setNewIncident] = useState({ title: '', description: '' });
+      const [newStepText, setNewStepText] = useState({});
+      const [viewPruned, setViewPruned] = useState(false);
+
+      const incidents = state.incidents || [];
+      const activeIncidents = incidents.filter(i => i.status === 'active');
+      const prunedIncidents = incidents.filter(i => i.status === 'pruned');
+      const displayList = viewPruned ? prunedIncidents : activeIncidents;
+
+      const logIncident = () => {
+        if (newIncident.title) {
+          dispatch({ type: 'ADD_INCIDENT', payload: { id: Date.now(), ...newIncident, status: 'active', steps: [] } });
+          setNewIncident({ title: '', description: '' });
+          toast('NEXUS EVENT LOGGED. VARIANCE THREAT DETECTED.', 'warning');
+        } else {
+          toast('INCIDENT IDENTIFIER REQUIRED.', 'info');
+        }
+      };
+
+      const addStep = (incidentId) => {
+        if (newStepText[incidentId]) {
+          dispatch({ type: 'ADD_INCIDENT_STEP', payload: { incidentId, step: { id: Date.now(), text: newStepText[incidentId], done: false } } });
+          setNewStepText({ ...newStepText, [incidentId]: '' });
+        }
+      };
+
+      return (
+        <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
+          <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
+            <div>
+              <div className="label">§V</div>
+              <h2 className="text-4xl">NEXUS INCIDENTS</h2>
+            </div>
+            <div className="flex border-2 border-[var(--ink)]">
+              <button onClick={() => setViewPruned(false)} className={`px-4 py-2 font-sans text-[12px] uppercase tracking-widest font-bold transition-colors ${!viewPruned ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-transparent text-[var(--ink)] hover:bg-[var(--card)]'}`}>
+                ACTIVE [{activeIncidents.length}]
+              </button>
+              <button onClick={() => setViewPruned(true)} className={`px-4 py-2 font-sans text-[12px] uppercase tracking-widest font-bold border-l-2 border-[var(--ink)] transition-colors ${viewPruned ? 'bg-[var(--destructive)] text-[var(--paper)]' : 'bg-transparent text-[var(--ink)] hover:bg-[var(--card)]'}`}>
+                ARCHIVES [{prunedIncidents.length}]
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col p-4 overflow-y-auto custom-scrollbar">
+            {!viewPruned && (
+              <div className="panel p-4 mb-6 bg-[var(--card)] border-stamped">
+                <span className="label !text-[var(--destructive)] !font-bold mb-3">REPORT TIMELINE ANOMALY</span>
+                <input type="text" placeholder="BUG IDENTIFIER (E.G. NULL POINTER)" className="input w-full mb-3" value={newIncident.title} onChange={e => setNewIncident({...newIncident, title: e.target.value})} />
+                <textarea placeholder="DESCRIBE THE VARIANCE..." className="input w-full h-20 py-2 mb-3 resize-none" value={newIncident.description} onChange={e => setNewIncident({...newIncident, description: e.target.value})} />
+                <button onClick={logIncident} className="btn-primary w-full !bg-[var(--destructive)] hover:!bg-[var(--ink)]">LOG NEXUS EVENT ↳</button>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-4">
+              {displayList.length === 0 ? (
+                 <div className="text-center p-8 opacity-60">
+                   <span className="font-sans uppercase tracking-widest text-sm">[ TIMELINE SECURE. NO EVENTS FOUND. ]</span>
+                 </div>
+              ) : displayList.map(incident => {
+                const isPruned = incident.status === 'pruned';
+                const progress = incident.steps.length > 0 ? Math.round((incident.steps.filter(s=>s.done).length / incident.steps.length) * 100) : 0;
+                
+                return (
+                  <div key={incident.id} className="panel bg-[var(--paper)] relative overflow-hidden">
+                    {isPruned && (
+                      <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20">
+                         <div className="tva-stamp !text-[6rem] !border-[8px] rotate-[-15deg] !text-[var(--destructive)] !border-[var(--destructive)]">PRUNED</div>
+                      </div>
+                    )}
+                    <div className="head relative z-10 bg-[var(--card)]">
+                      <span className={`font-bold text-[14px] ${isPruned ? 'line-through opacity-70' : 'text-[var(--destructive)]'}`}>{incident.title}</span>
+                      <div className="flex gap-4">
+                        {!isPruned && (
+                          <button onClick={() => {
+                            dispatch({ type: 'PRUNE_INCIDENT', payload: incident.id });
+                            toast('INCIDENT PRUNED. TIMELINE RESTORED.', 'success');
+                          }} className="btn-outline !py-1 !px-3 !text-[10px] hover:!bg-[var(--destructive)] hover:!border-[var(--destructive)]" title="Mark Resolved">PRUNE EVENT</button>
+                        )}
+                        <button onClick={() => dispatch({ type: 'DELETE_INCIDENT', payload: incident.id })} className="btn-ghost !text-[var(--rust)] font-bold">✕</button>
+                      </div>
+                    </div>
+                    <div className="body relative z-10 border-t border-[var(--ink)]">
+                      <p className="font-sans text-[13px] opacity-80 uppercase leading-relaxed mb-4">{incident.description}</p>
+                      
+                      <div className="bg-[var(--card)] border border-[var(--ink)] border-dashed p-4">
+                        <span className="label text-[10px] !mb-3">PRUNING PROTOCOL (STEPS) - {progress}%</span>
+                        <div className="flex flex-col gap-2 mb-4">
+                          {incident.steps.map(step => (
+                            <div key={step.id} className="flex gap-3 items-start font-sans text-[13px] uppercase">
+                              <button onClick={() => dispatch({ type: 'TOGGLE_INCIDENT_STEP', payload: { incidentId: incident.id, stepId: step.id }})} className="font-bold hover:text-[var(--stamp)]">
+                                {step.done ? '[✕]' : '[ ]'}
+                              </button>
+                              <span className={step.done ? 'line-through opacity-50' : ''}>{step.text}</span>
+                            </div>
+                          ))}
+                          {incident.steps.length === 0 && <span className="text-[11px] opacity-50 uppercase">[ NO STEPS DEFINED ]</span>}
+                        </div>
+                        
+                        {!isPruned && (
+                          <div className="flex gap-2">
+                            <input type="text" placeholder="ADD PROTOCOL STEP..." className="input flex-1 !h-8 !text-[11px] bg-[var(--paper)]" value={newStepText[incident.id] || ''} onChange={e => setNewStepText({...newStepText, [incident.id]: e.target.value})} onKeyDown={e => e.key === 'Enter' && addStep(incident.id)} />
+                            <button onClick={() => addStep(incident.id)} className="btn-primary !py-0 !px-3 !text-lg">+</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ----------------------------------------------------
+    // EXISTING MODULES
+    // ----------------------------------------------------
+
+    const SyllabusVault = () => {
+      const { state, dispatch } = useContext(MatrixContext);
+      const toast = useContext(ToastContext);
+      const [showForm, setShowForm] = useState(false);
+      
+      // Default to today's date so items are immediately anchored on the timeline
+      const getToday = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      };
+
+      const [newCourse, setNewCourse] = useState({ course: '', deliverable: '', deadline: getToday(), type: 'Assignment' });
+      const [quickTask, setQuickTask] = useState({});
+
+      const handleAdd = () => {
+        if (newCourse.course && newCourse.deliverable && newCourse.deadline) {
+          dispatch({ type: 'ADD_SYLLABUS', payload: { id: Date.now(), status: 'active', ...newCourse } });
+          toast(`REQUIREMENT LOGGED: ${newCourse.course}`, 'success');
+          setShowForm(false);
+          setNewCourse({ course: '', deliverable: '', deadline: getToday(), type: 'Assignment' });
+        } else {
+          toast('COURSE, DELIVERABLE & DEADLINE REQUIRED', 'warning');
+        }
+      };
+
+      const handleAddQuickTask = (item) => {
+        const taskTitle = quickTask[item.id];
+        if (taskTitle && taskTitle.trim()) {
+          const activeFocusTasks = state.tasks.filter(t => t.status === 'todo' && t.isToday);
+          const currentLoad = activeFocusTasks.reduce((acc, t) => acc + t.weight, 0);
+          const forceBacklog = currentLoad >= 25; 
+
+          dispatch({ 
+            type: 'ADD_TASK', 
+            payload: { id: Date.now(), title: taskTitle, weight: 5, status: 'todo', epic: item.course, isToday: !forceBacklog, syllabusId: item.id } 
+          });
+          toast(`CONVERGED TASK ASSIGNED ${forceBacklog ? '(FORCED TO BACKLOG)' : ''}`, forceBacklog ? 'warning' : 'success');
+          setQuickTask({ ...quickTask, [item.id]: '' });
+        } else {
+          toast('TASK TITLE CANNOT BE EMPTY', 'warning');
+        }
+      };
+
+      const sortedSyllabus = [...state.syllabus].sort((a, b) => new Date(a.deadline || '2099-01-01') - new Date(b.deadline || '2099-01-01'));
+
+      return (
+        <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
+          <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
+            <div>
+              <div className="label">§I</div>
+              <h2 className="text-4xl">SYLLABUS VAULT</h2>
+            </div>
+            <button onClick={() => setShowForm(!showForm)} className="btn-outline !py-2 !px-4 text-xs" title="Log New Requirement">
+              {showForm ? '✕ CANCEL' : '+ LOG REQ'}
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-0 pb-4">
+            {showForm && (
+              <div className="panel animate-in fade-in slide-in-from-top-2 p-4 m-4 border-stamped bg-[var(--card)]">
+                <div className="head !px-0 !pt-0 !border-b-0 mb-4"><span className="code">FORM-SV-01</span><span>NEW ENTRY</span></div>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="label">COURSE CODE</label>
+                    <input type="text" placeholder="e.g. CS 410" className="input w-full" value={newCourse.course} onChange={e => setNewCourse({ ...newCourse, course: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">DEADLINE</label>
+                    <input type="date" className="input w-full" value={newCourse.deadline} onChange={e => setNewCourse({ ...newCourse, deadline: e.target.value })} />
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label className="label">DELIVERABLE DESCRIPTION</label>
+                  <input type="text" placeholder="MILESTONE / OBJECTIVE" className="input w-full" value={newCourse.deliverable} onChange={e => setNewCourse({ ...newCourse, deliverable: e.target.value })} />
+                </div>
+                <button onClick={handleAdd} className="btn-stamp w-full !py-3">SUBMIT REQUIREMENT ↳</button>
+              </div>
+            )}
+
+            {sortedSyllabus.map((item, index) => {
+              const linkedTasks = state.tasks.filter(t => t.syllabusId === item.id);
+              const totalTasks = linkedTasks.length;
+              const completedTasks = linkedTasks.filter(t => t.status === 'done').length;
+              const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+              const hasLinkedTasks = totalTasks > 0;
+              const daysLeft = item.deadline ? Math.ceil((new Date(item.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+              const isOverdue = daysLeft !== null && daysLeft < 0;
+
+              return (
+                <div key={item.id} className={`panel !border-l-0 !border-r-0 !border-t-0 ${index === sortedSyllabus.length -1 ? '!border-b-0' : ''} bg-transparent`}>
+                  <div className="head !bg-[var(--card)]">
+                    <span className="code font-bold">{item.course}</span>
+                    <div className="flex items-center gap-4">
+                      {item.deadline && (
+                        <span className={`label !mb-0 font-bold ${isOverdue ? 'text-[var(--destructive)] blink' : ''}`}>
+                          {daysLeft !== null ? (isOverdue ? `⚠ OVERDUE ${Math.abs(daysLeft)}D` : `T-${daysLeft}D`) : item.deadline}
+                        </span>
+                      )}
+                      <button onClick={() => dispatch({ type: 'DELETE_SYLLABUS', payload: item.id })} className="btn-ghost !text-[var(--rust)]" title="Prune Record">✕</button>
+                    </div>
+                  </div>
+                  <div className="body flex flex-col gap-4">
+                    <p className="font-sans text-[15px] leading-relaxed uppercase">{item.deliverable}</p>
+                    
+                    <div className="mt-2 p-5 border-2 border-[var(--ink)] border-dashed bg-[var(--card)] flex flex-col">
+                      {hasLinkedTasks ? (
+                        <div className="mb-6">
+                          <div className="flex justify-between items-end mb-3">
+                            <span className="label !mb-0 text-[11px]">CONVERGENCE PROGRESS</span>
+                            <span className="font-bold text-[13px]">{completedTasks} / {totalTasks} <span className="opacity-50 ml-1 font-normal">({progress}%)</span></span>
+                          </div>
+                          <div className="w-full h-5 border border-[var(--ink)] flex p-[2px] gap-[2px] mb-5 bg-[var(--paper)]">
+                             {Array.from({length: totalTasks}).map((_, i) => (
+                               <div key={i} className={`flex-1 transition-colors duration-300 ${i < completedTasks ? 'bg-[var(--ink)]' : 'bg-transparent border border-[var(--ink)] border-dashed'}`}></div>
+                             ))}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                             {linkedTasks.map(t => (
+                               <div key={t.id} className="text-[13px] uppercase font-sans flex justify-between items-start opacity-80 hover:opacity-100 transition-opacity">
+                                 <span className={`pr-4 flex gap-2 items-start ${t.status === 'done' ? 'line-through opacity-50' : ''}`}>
+                                   <button onClick={() => dispatch({ type: 'TOGGLE_TASK_STATUS', payload: t.id })} className="font-bold hover:text-[var(--stamp)] shrink-0 transition-colors leading-snug">
+                                     {t.status === 'done' ? '[✕]' : '[ ]'}
+                                   </button>
+                                   <span className="leading-snug">{t.title}</span>
+                                 </span>
+                                 <span className="shrink-0 text-[11px] border border-[var(--ink)] px-2 py-[2px] font-bold">W:{t.weight}</span>
+                               </div>
+                             ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="label text-[var(--stamp)] !mb-5 flex items-center gap-2"><span className="blink">■</span> AWAITING TASK CONVERGENCE</div>
+                      )}
+
+                      <div className="flex gap-3 mt-auto">
+                        <input type="text" className="input flex-1 h-10 !text-[13px] !px-3 bg-[var(--paper)] border-dashed focus:border-solid focus:bg-[var(--card)]" placeholder="ASSIGN CONVERGED TASK..." value={quickTask[item.id] || ''} onChange={(e) => setQuickTask({...quickTask, [item.id]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddQuickTask(item)} />
+                        <button onClick={() => handleAddQuickTask(item)} className="btn-primary !py-0 !px-4 font-sans !text-2xl flex items-center justify-center shrink-0 h-10">+</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {state.syllabus.length === 0 && (
+               <div className="text-center p-8 flex flex-col items-center gap-4 opacity-60 m-auto">
+                 <span className="text-4xl">§</span>
+                 <p className="label">VAULT EMPTY. NO ACTIVE DIRECTIVES.</p>
+               </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const TaskMatrix = () => {
+      const { state, dispatch } = useContext(MatrixContext);
+      const toast = useContext(ToastContext);
+      const [newTask, setNewTask] = useState({ title: '', weight: 5, epic: '', syllabusId: null });
+      const [viewState, setViewState] = useState('focus');
+
+      // Chrono-Monitor State
+      const [timerLeft, setTimerLeft] = useState(25 * 60);
+      const [timerActive, setTimerActive] = useState(false);
+
+      useEffect(() => {
+        let interval = null;
+        if (timerActive && timerLeft > 0) {
+          interval = setInterval(() => setTimerLeft(t => t - 1), 1000);
+        } else if (timerLeft === 0 && timerActive) {
+          setTimerActive(false);
+          toast('AUTHORIZED FOCUS SESSION COMPLETE. VARIANCE MINIMIZED.', 'success');
+        }
+        return () => clearInterval(interval);
+      }, [timerActive, timerLeft, toast]);
+
+      const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+      };
+
+      const MAX_DAILY_LOAD = 25; 
+      const activeFocusTasks = state.tasks.filter(t => t.status === 'todo' && t.isToday);
+      const currentLoad = activeFocusTasks.reduce((acc, t) => acc + t.weight, 0);
+      const isOverloaded = currentLoad >= MAX_DAILY_LOAD;
+      const backlogTasks = state.tasks.filter(t => t.status === 'todo' && !t.isToday);
+      const completedTasks = state.tasks.filter(t => t.status === 'done');
+      const stats = state.stats || { clearancePoints: 0 };
+
+      const handleAddTask = () => {
+        if (newTask.title) {
+          const forceBacklog = isOverloaded && viewState === 'focus';
+          dispatch({ 
+            type: 'ADD_TASK', 
+            payload: { id: Date.now(), status: 'todo', isToday: forceBacklog ? false : (viewState === 'focus'), syllabusId: newTask.syllabusId || null, title: newTask.title, weight: newTask.weight, epic: newTask.epic || '' } 
+          });
+          toast(`TASK INITIALIZED ${forceBacklog ? '(FORCED TO BACKLOG)' : ''}`, forceBacklog ? 'warning' : 'info');
+          setNewTask({ title: '', weight: 5, epic: '', syllabusId: null });
+        } else {
+          toast('TASK DIRECTIVE CANNOT BE EMPTY', 'warning');
+        }
+      };
+
+      const handleToggleTask = (task) => {
+        if (task.status === 'todo' && timerActive) {
+           const points = task.weight * 10;
+           dispatch({ type: 'ADD_CLEARANCE_POINTS', payload: points });
+           toast(`FOCUS YIELD: +${points} CLEARANCE POINTS`, 'success');
+        }
+        dispatch({ type: 'TOGGLE_TASK_STATUS', payload: task.id });
+      };
+
+      const renderTask = (task) => (
+        <div key={task.id} className={`panel mb-4 bg-[var(--card)] transition-colors ${task.status === 'done' ? 'opacity-50' : 'border-stamped'}`}>
+          <div className="p-4 flex items-start justify-between gap-4">
+            <button onClick={() => handleToggleTask(task)} className="text-[var(--ink)] mt-0 shrink-0 font-bold text-lg hover:text-[var(--stamp)] transition-colors">
+              {task.status === 'done' ? '[✕]' : '[ ]'}
+            </button>
+            <div className="flex-1 min-w-0 mt-[2px]">
+              <p className={`font-sans text-[14px] leading-tight uppercase ${task.status === 'done' ? 'line-through text-[var(--muted-fg)]' : ''}`}>{task.title}</p>
+              <div className="flex items-center gap-3 mt-3 flex-wrap">
+                {task.epic && <span className="label !mb-0 border border-[var(--ink)] px-2 py-1 text-[10px] bg-[var(--paper)]">REF: {task.epic}</span>}
+                {task.syllabusId && <span className="label !mb-0 text-[var(--stamp)] border border-[var(--stamp)] px-2 py-1 text-[10px] flex items-center gap-2 bg-[var(--paper)]"><span className="blink">■</span> CONVERGED</span>}
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-3 shrink-0">
+              <span className="tva-stamp" style={{ padding: '2px 8px', fontSize: '12px', transform: task.weight > 7 ? 'rotate(-6deg)' : 'rotate(-2deg)', color: task.weight > 7 ? 'var(--stamp)' : 'inherit', borderColor: task.weight > 7 ? 'var(--stamp)' : 'var(--ink)' }}>W:{task.weight}</span>
+              <div className="flex gap-4 mt-1">
+                {task.status !== 'done' && (
+                  <button onClick={() => dispatch({ type: 'TOGGLE_TASK_TODAY', payload: task.id })} className="btn-ghost font-bold text-lg" disabled={timerActive} title={task.isToday ? "DEMOTE TO BACKLOG" : "PROMOTE TO FOCUS"}>
+                    {task.isToday ? '↓' : '↑'}
+                  </button>
+                )}
+                <button onClick={() => dispatch({ type: 'DELETE_TASK', payload: task.id })} disabled={timerActive} className="btn-ghost !text-[var(--rust)] font-bold text-lg">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
+          <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
+            <div>
+              <div className="label">§II</div>
+              <h2 className="text-4xl">TASK MATRIX</h2>
+            </div>
+            <div className="flex flex-col items-end">
+               <span className="label !mb-1 text-[10px]">CLEARANCE</span>
+               <span className="font-display text-2xl text-[var(--stamp)] font-bold">{stats.clearancePoints} PTS</span>
+            </div>
+          </div>
+
+          {/* Chrono-Monitor Integration */}
+          <div className="bg-[var(--crt-bg)] border-b-2 border-[var(--ink)] p-4 flex flex-col md:flex-row gap-4 md:items-center justify-between shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+            <div className="flex flex-col">
+              <span className="label !text-[var(--stamp)] opacity-70 flex items-center gap-2">
+                 <div className={`w-2 h-2 rounded-full ${timerActive ? 'bg-[var(--stamp)] blink' : 'bg-gray-600'}`}></div>
+                 CHRONO-MONITOR
+              </span>
+              <span className="font-raster text-6xl md:text-7xl leading-none" style={{ color: 'var(--stamp)', textShadow: timerActive ? '0 0 15px var(--stamp)' : 'none' }}>
+                 {formatTime(timerLeft)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-2 shrink-0">
+               <button onClick={() => setTimerActive(!timerActive)} className={`border-2 border-[var(--stamp)] px-4 py-2 font-display text-lg uppercase tracking-widest font-bold transition-colors ${timerActive ? 'bg-[var(--stamp)] text-[var(--crt-bg)]' : 'text-[var(--stamp)] hover:bg-[var(--stamp)] hover:text-[var(--crt-bg)]'}`}>
+                 {timerActive ? '[ PAUSE TIMELINE ]' : '[ AUTHORIZE FOCUS ]'}
+               </button>
+               <button onClick={() => { setTimerActive(false); setTimerLeft(25 * 60); }} className="text-[var(--stamp)] opacity-60 hover:opacity-100 font-sans text-xs uppercase tracking-widest text-right">
+                 [ RESET TIMELINE ]
+               </button>
+            </div>
+          </div>
+
+          <div className="flex border-b border-[var(--ink)]">
+            <button onClick={() => !timerActive && setViewState('focus')} disabled={timerActive} className={`flex-1 py-2 font-sans text-[12px] uppercase tracking-widest font-bold transition-colors ${viewState === 'focus' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-transparent text-[var(--ink)] hover:bg-[var(--card)]'} ${timerActive ? 'opacity-50 cursor-not-allowed' : ''}`}>FOCUS [{activeFocusTasks.length}]</button>
+            <button onClick={() => !timerActive && setViewState('backlog')} disabled={timerActive} className={`flex-1 py-2 font-sans text-[12px] uppercase tracking-widest font-bold border-l-2 border-[var(--ink)] transition-colors ${viewState === 'backlog' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-transparent text-[var(--ink)] hover:bg-[var(--card)]'} ${timerActive ? 'opacity-50 cursor-not-allowed' : ''}`}>BACKLOG [{backlogTasks.length}]</button>
+          </div>
+
+          <div className="relative">
+            {/* Overlay Lock for Chrono-Monitor */}
+            {timerActive && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--card)] bg-opacity-70 backdrop-blur-[2px]">
+                 <div className="text-[var(--stamp)] font-display text-xl uppercase tracking-widest border-2 border-[var(--stamp)] px-4 py-2 bg-[var(--crt-bg)] shadow-[0_0_15px_var(--stamp)] animate-pulse">
+                     MATRIX LOCKED. MAINTAIN FOCUS.
+                 </div>
+              </div>
+            )}
+            
+            <div className="p-4 border-b border-[var(--ink)] border-dashed bg-[var(--card)] shrink-0">
+              <div className="flex justify-between items-end mb-3">
+                <span className="label !mb-0 flex items-center">
+                  <span className={`status-dot blink shrink-0 mr-3 ${isOverloaded ? 'bg-[var(--destructive)]' : ''}`}></span> COGNITIVE LOAD
+                </span>
+                <span className={`font-display text-3xl font-black ${isOverloaded ? 'text-[var(--destructive)]' : 'text-[var(--ink)]'}`}>{currentLoad} / {MAX_DAILY_LOAD}</span>
+              </div>
+              <div className="flex gap-[2px] h-5 border border-[var(--ink)] p-[2px] bg-[var(--paper)]">
+                {Array.from({ length: MAX_DAILY_LOAD }).map((_, i) => (
+                   <div key={i} className={`flex-1 border-r border-[var(--ink)] opacity-80 last:border-0 ${i < currentLoad ? (isOverloaded ? 'bg-[var(--destructive)]' : 'bg-[var(--ink)]') : 'bg-transparent'}`}></div>
+                ))}
+              </div>
+              {isOverloaded && <p className="label text-[var(--destructive)] mt-3">⚠ MAXIMUM COGNITIVE LOAD EXCEEDED. ASSIGNMENTS RESTRICTED.</p>}
+              
+              <div className="flex flex-col gap-2 mt-4">
+                 <div className="flex gap-2">
+                   <input type="text" placeholder="ENTER TASK DIRECTIVE..." className="input flex-1 min-w-0" value={newTask.title} onChange={e => setNewTask({ ...newTask, title: e.target.value })} onKeyDown={e => e.key === 'Enter' && handleAddTask()} />
+                   <input type="number" min="1" max="10" className="input w-16 md:w-20 text-center shrink-0" value={newTask.weight} onChange={e => setNewTask({ ...newTask, weight: parseInt(e.target.value) || 1 })} title="WEIGHT (1-10)" />
+                   <button onClick={handleAddTask} className="btn-primary flex items-center justify-center w-12 md:w-14 text-2xl font-sans !p-0 shrink-0" title="INITIALIZE">+</button>
+                 </div>
+                 <div className="flex gap-2">
+                   <input type="text" placeholder="REF (EPIC)..." className="input flex-1 min-w-0 !h-8 !text-[11px] !px-2 bg-[var(--paper)] border-dashed focus:border-solid focus:bg-[var(--card)]" value={newTask.epic} onChange={e => setNewTask({ ...newTask, epic: e.target.value })} onKeyDown={e => e.key === 'Enter' && handleAddTask()} />
+                   <select className="input flex-1 min-w-0 !h-8 !text-[11px] !px-2 bg-[var(--paper)] border-dashed focus:border-solid focus:bg-[var(--card)] uppercase" value={newTask.syllabusId || ''} onChange={e => setNewTask({ ...newTask, syllabusId: e.target.value ? parseInt(e.target.value) : null })}>
+                      <option value="">[ NO CONVERGENCE ]</option>
+                      {state.syllabus.map(s => <option key={s.id} value={s.id}>CONVERGE: {s.course}</option>)}
+                   </select>
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col p-4 overflow-y-auto custom-scrollbar flex-1 min-h-[300px]">
+            {viewState === 'focus' ? (
+              <>
+                {activeFocusTasks.length === 0 ? (
+                  <div className="border-dashed p-8 text-center text-[var(--muted-fg)] font-sans uppercase tracking-widest text-sm opacity-70">[ NO ACTIVE DIRECTIVES. PULL FROM BACKLOG. ]</div>
+                ) : (
+                  activeFocusTasks.map(renderTask)
+                )}
+                {completedTasks.filter(t => t.isToday).length > 0 && (
+                  <div className="mt-8 pt-6 border-t-2 border-[var(--ink)]">
+                    <div className="label mb-4">COMPLETED LOG (TODAY)</div>
+                    <div>{completedTasks.filter(t => t.isToday).map(renderTask)}</div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {backlogTasks.length === 0 ? (
+                  <div className="border-dashed p-8 text-center text-[var(--muted-fg)] font-sans uppercase tracking-widest text-sm opacity-70">[ BACKLOG IS EMPTY. ]</div>
+                ) : (
+                  backlogTasks.map(renderTask)
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const ResourceConsole = () => {
+      const { state, dispatch } = useContext(MatrixContext);
+      const toast = useContext(ToastContext);
+      const [activeTab, setActiveTab] = useState('inventory'); 
+      const [newInv, setNewInv] = useState({ name: '', category: 'Component', quantity: 1, minStock: 0, specs: '' });
+      const [showInvForm, setShowInvForm] = useState(false);
+      const [ttInputs, setTtInputs] = useState(2);
+      const [ttOutputs, setTtOutputs] = useState([{ name: 'F', values: {} }]);
+      const [ttName, setTtName] = useState('');
+      const [newFormula, setNewFormula] = useState({ title: '', code: '' });
+      const [selectedTtId, setSelectedTtId] = useState('');
+      const [selectedTtOutIdx, setSelectedTtOutIdx] = useState(0);
+
+      const updateInvQty = (id, current, delta) => dispatch({ type: 'UPDATE_INVENTORY', payload: { id, quantity: Math.max(0, current + delta) } });
+
+      const handleAddInv = () => {
+        if (newInv.name) {
+          dispatch({ type: 'ADD_INVENTORY', payload: { id: Date.now(), ...newInv } });
+          setNewInv({ name: '', category: 'Component', quantity: 1, minStock: 0, specs: '' });
+          setShowInvForm(false);
+          toast('COMPONENT RECORDED TO LEDGER', 'success');
+        } else { toast('COMPONENT DESIGNATION REQUIRED', 'warning'); }
+      };
+
+      const generateTTMatrix = () => Array.from({length: Math.pow(2, ttInputs)}, (_, i) => i.toString(2).padStart(ttInputs, '0'));
+
+      const toggleTtOutput = (outputIndex, rowKey) => {
+        setTtOutputs(ttOutputs.map((out, idx) => idx !== outputIndex ? out : { ...out, values: { ...out.values, [rowKey]: (out.values[rowKey] || 0) === 0 ? 1 : 0 } }));
+      };
+
+      const addTtOutput = () => setTtOutputs([...ttOutputs, { name: `F${ttOutputs.length + 1}`, values: {} }]);
+
+      const removeTtOutput = () => {
+        if (ttOutputs.length > 1) {
+          setTtOutputs(ttOutputs.slice(0, -1));
+        }
+      };
+
+      const saveTruthTable = () => {
+        if (!ttName) return toast('TABLE IDENTIFIER REQUIRED', 'warning');
+        dispatch({ type: 'SAVE_TRUTH_TABLE', payload: { id: Date.now(), name: ttName, inputs: ttInputs, outputs: ttOutputs } });
+        toast('TRUTH TABLE SECURED', 'success');
+        setTtName('');
+      };
+
+      const generateBooleanEquation = (inputsCount, valuesMap) => {
+        const inputs = ['A', 'B', 'C', 'D'].slice(0, inputsCount);
+        const terms = [];
+        for (let i = 0; i < Math.pow(2, inputsCount); i++) {
+          const bin = i.toString(2).padStart(inputsCount, '0');
+          if (valuesMap[bin] === 1) terms.push(`(${bin.split('').map((val, j) => val === '1' ? inputs[j] : `NOT ${inputs[j]}`).join(' AND ')})`);
+        }
+        return terms.length === 0 ? '0' : terms.length === Math.pow(2, inputsCount) ? '1' : terms.join(' OR ');
+      };
+
+      const handleExtractLogic = () => {
+        const tt = state.truthTables.find(t => t.id === parseInt(selectedTtId));
+        if (!tt) return toast('NO MODULE SELECTED', 'warning');
+        setNewFormula({ title: `${tt.name} - ${tt.outputs[selectedTtOutIdx].name}`, code: generateBooleanEquation(tt.inputs, tt.outputs[selectedTtOutIdx].values) });
+        toast('LOGIC EXTRACTED TO TERMINAL', 'info');
+      };
+
+      return (
+        <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
+          <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
+            <div>
+              <div className="label">§VI</div>
+              <h2 className="text-4xl">CONSOLE</h2>
+            </div>
+          </div>
+
+          <div className="flex border-b-2 border-[var(--ink)] shrink-0">
+            <button onClick={() => setActiveTab('inventory')} className={`flex-1 py-3 font-sans text-[12px] uppercase tracking-widest font-bold transition-colors ${activeTab === 'inventory' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] border-r-2 border-[var(--ink)] hover:bg-[var(--paper)]'}`}>HARDWARE</button>
+            <button onClick={() => setActiveTab('logic')} className={`flex-1 py-3 font-sans text-[12px] uppercase tracking-widest font-bold transition-colors ${activeTab === 'logic' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] border-r-2 border-[var(--ink)] hover:bg-[var(--paper)]'}`}>LOGIC</button>
+            <button onClick={() => setActiveTab('formulas')} className={`flex-1 py-3 font-sans text-[12px] uppercase tracking-widest font-bold transition-colors ${activeTab === 'formulas' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>LATEX</button>
+          </div>
+
+          <div className="flex flex-col p-4 overflow-y-auto custom-scrollbar min-h-[300px]">
+            {/* INVENTORY TAB */}
+            {activeTab === 'inventory' && (
+              <div className="flex flex-col gap-6">
+                <div className="flex justify-between items-center">
+                   <span className="label !mb-0 font-bold">PHYSICAL INVENTORY LEDGER</span>
+                   <button onClick={() => setShowInvForm(!showInvForm)} className="btn-outline !py-2 !px-4 text-xs">{showInvForm ? '✕ CANCEL' : '+ NEW ENTRY'}</button>
+                </div>
+                {showInvForm && (
+                  <div className="panel p-4 animate-in fade-in border-stamped bg-[var(--card)]">
+                    <input type="text" placeholder="COMPONENT DESIGNATION" className="input w-full mb-4" value={newInv.name} onChange={e => setNewInv({ ...newInv, name: e.target.value })} />
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <select className="input" value={newInv.category} onChange={e => setNewInv({ ...newInv, category: e.target.value })}>
+                        <option>IC</option><option>Board</option><option>Wire</option><option>Resistor</option><option>Capacitor</option><option>Other</option>
+                      </select>
+                      <input type="number" placeholder="QTY" className="input" value={newInv.quantity} onChange={e => setNewInv({ ...newInv, quantity: parseInt(e.target.value)||0 })} />
+                    </div>
+                    <input type="text" placeholder="SPECIFICATIONS" className="input w-full mb-6" value={newInv.specs} onChange={e => setNewInv({ ...newInv, specs: e.target.value })} />
+                    <button onClick={handleAddInv} className="btn-stamp w-full">COMMIT RECORD</button>
+                  </div>
+                )}
+                <div className="ledger border-t border-[var(--ink)] mt-2">
+                  <div className="row head px-2"><div className="col-span-2">DESIGNATION / SPEC</div><div className="text-right">QTY</div><div className="text-right">CTRL</div></div>
+                  {state.inventory.map(item => (
+                    <div key={item.id} className={`row px-2 hover:bg-[var(--card)] transition-colors ${item.quantity <= item.minStock ? 'status-warn font-bold' : ''}`}>
+                      <div className="col-span-2 min-w-0 pr-2">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate uppercase text-[14px]">{item.name} {item.quantity <= item.minStock && ' [LOW STOCK]'}</span>
+                          <span className="border border-current px-1 text-[10px] shrink-0 font-normal">{item.category}</span>
+                        </div>
+                        <div className="text-[11px] text-[var(--muted-fg)] uppercase font-normal mt-1">{item.specs}</div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => updateInvQty(item.id, item.quantity, -1)} className="border border-[var(--ink)] px-2 py-1 hover:bg-[var(--ink)] hover:text-[var(--paper)] transition-colors">-</button>
+                        <span className="w-8 text-center font-bold text-lg">{item.quantity}</span>
+                        <button onClick={() => updateInvQty(item.id, item.quantity, 1)} className="border border-[var(--ink)] px-2 py-1 hover:bg-[var(--ink)] hover:text-[var(--paper)] transition-colors">+</button>
+                      </div>
+                      <div className="text-right"><button onClick={() => dispatch({ type: 'DELETE_INVENTORY', payload: item.id })} className="btn-ghost !text-[var(--rust)] font-bold">✕</button></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* LOGIC TAB */}
+            {activeTab === 'logic' && (
+              <div className="flex flex-col gap-6">
+                 <div className="panel p-0 bg-[var(--card)] border-stamped">
+                   <div className="head bg-[var(--paper)]">
+                     <span className="label !mb-0">INTERACTIVE TABLE BUILDER</span>
+                     <div className="flex items-center gap-3">
+                       <span className="label !mb-0">INPUTS:</span>
+                       {[2, 3, 4].map(num => (
+                         <button key={num} onClick={() => { setTtInputs(num); setTtOutputs([{name:'F', values:{}}]); }} className={`border-2 border-[var(--ink)] w-6 h-6 flex items-center justify-center font-bold text-sm transition-colors ${ttInputs === num ? 'bg-[var(--ink)] text-[var(--paper)]' : 'hover:bg-[var(--paper)]'}`}>{num}</button>
+                       ))}
+                     </div>
+                   </div>
+                   <div className="overflow-x-auto p-4 border-b-2 border-[var(--ink)]">
+                     <table className="table w-full text-center border-collapse border border-[var(--ink)] bg-[var(--paper)]">
+                       <thead>
+                         <tr className="bg-[var(--ink)] text-[var(--paper)]">
+                           {Array.from({length: ttInputs}).map((_, i) => <th key={i} className="border-r border-[var(--paper)] border-b-2 font-bold text-[14px] !color-[var(--paper)]">{String.fromCharCode(65 + i)}</th>)}
+                           {ttOutputs.map((out, idx) => (
+                             <th key={idx} className="border-r border-[var(--paper)] border-b-2">
+                               <input type="text" value={out.name} onChange={(e) => setTtOutputs(ttOutputs.map((o,i) => i===idx ? {...o, name:e.target.value} : o))} className="bg-transparent w-full text-center outline-none uppercase font-bold text-[var(--paper)]" />
+                             </th>
+                           ))}
+                           <th className="border-b-2 border-[var(--paper)] w-20">
+                             <div className="flex justify-center gap-3">
+                               <button onClick={() => setTtOutputs([...ttOutputs, { name: `F${ttOutputs.length + 1}`, values: {} }])} className="hover:opacity-70 font-bold text-lg" title="Add Column">+</button>
+                               {ttOutputs.length > 1 && <button onClick={() => setTtOutputs(ttOutputs.slice(0, -1))} className="hover:opacity-70 font-bold text-lg" title="Remove Column">-</button>}
+                             </div>
+                           </th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {generateTTMatrix().map((rowBinary, rowIdx) => (
+                           <tr key={rowIdx} className="hover:bg-[var(--card)] border-b border-dashed border-[var(--ink)]">
+                             {rowBinary.split('').map((val, cellIdx) => <td key={cellIdx} className="border-r border-[var(--ink)] opacity-70 p-2">{val}</td>)}
+                             {ttOutputs.map((out, outIdx) => (
+                               <td key={outIdx} className={`border-r border-[var(--ink)] cursor-pointer font-bold p-2 transition-colors ${out.values[rowBinary] === 1 ? 'text-[var(--stamp)] bg-[oklch(0.58_0.19_45_/_0.1)]' : 'opacity-40'}`} onClick={() => toggleTtOutput(outIdx, rowBinary)}>{out.values[rowBinary] || 0}</td>
+                             ))}
+                             <td className="p-2"></td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                   <div className="p-4 flex gap-3 bg-[var(--paper)] flex-wrap">
+                     <input type="text" placeholder="TABLE IDENTIFIER (E.G. ADDER)" className="input flex-1 min-w-[200px]" value={ttName} onChange={e => setTtName(e.target.value)} />
+                     <button onClick={saveTruthTable} className="btn-primary !px-6 flex-1 min-w-[120px]">↳ SAVE TABLE</button>
+                   </div>
+                 </div>
+                 {state.truthTables.length > 0 && (
+                   <div className="flex flex-col gap-3 mt-4">
+                     <span className="label">SAVED LOGIC MODULES</span>
+                     {state.truthTables.map(tt => (
+                       <div key={tt.id} className="panel px-4 py-3 flex justify-between items-center group bg-[var(--paper)] hover:bg-[var(--card)] transition-colors">
+                         <span className="font-bold uppercase tracking-widest text-[var(--stamp)]">{tt.name}</span>
+                         <div className="flex items-center gap-6">
+                           <span className="label !mb-0">{tt.inputs} IN / {tt.outputs.length} OUT</span>
+                           <button onClick={() => dispatch({ type: 'DELETE_TRUTH_TABLE', payload: tt.id })} className="btn-ghost !text-[var(--rust)] font-bold">✕</button>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+              </div>
+            )}
+
+            {/* FORMULAS TAB */}
+            {activeTab === 'formulas' && (
+              <div className="flex flex-col gap-6">
+                <div className="crt-box scanlines">
+                   <span className="tag mb-6">BOOLEAN LOGIC EXTRACTION TERMINAL</span>
+                   <div className="flex flex-col gap-4">
+                     <div className="flex flex-wrap md:flex-nowrap gap-4 items-end border border-[var(--crt-fg)] border-dashed p-4 mb-2">
+                       <div className="flex-1 min-w-[200px]">
+                         <label className="text-[10px] uppercase tracking-widest opacity-60 block mb-1">SOURCE MODULE (TRUTH TABLE)</label>
+                         <select className="w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-2 focus:outline-none focus:border-[var(--stamp)] font-sans uppercase text-[13px]" value={selectedTtId} onChange={(e) => { setSelectedTtId(e.target.value); setSelectedTtOutIdx(0); }}>
+                           <option value="" className="bg-[var(--crt-bg)]">[ MANUAL INPUT ]</option>
+                           {state.truthTables.map(tt => <option key={tt.id} value={tt.id} className="bg-[var(--crt-bg)]">{tt.name}</option>)}
+                         </select>
+                       </div>
+                       {selectedTtId && (
+                         <div className="w-full md:w-32 shrink-0">
+                           <label className="text-[10px] uppercase tracking-widest opacity-60 block mb-1">TARGET OUTPUT</label>
+                           <select className="w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-2 focus:outline-none focus:border-[var(--stamp)] font-sans uppercase text-[13px]" value={selectedTtOutIdx} onChange={(e) => setSelectedTtOutIdx(parseInt(e.target.value))}>
+                             {state.truthTables.find(t => t.id === parseInt(selectedTtId))?.outputs.map((out, idx) => <option key={idx} value={idx} className="bg-[var(--crt-bg)]">{out.name}</option>)}
+                           </select>
+                         </div>
+                       )}
+                       {selectedTtId && <button onClick={handleExtractLogic} className="w-full md:w-auto border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] px-4 py-2 font-display uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] transition-colors cursor-pointer text-lg shrink-0 h-[43px]">EXTRACT ↳</button>}
+                     </div>
+                     <div>
+                       <label className="text-[10px] uppercase tracking-widest opacity-60 block mb-1">DESIGNATION</label>
+                       <input type="text" placeholder="E.G. QUADRATIC FORMULA OR ADDER CARRY" className="w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-2 focus:outline-none focus:border-[var(--stamp)] font-sans uppercase" value={newFormula.title || ''} onChange={(e) => setNewFormula({...newFormula, title: e.target.value})} />
+                     </div>
+                     <div>
+                       <label className="text-[10px] uppercase tracking-widest opacity-60 block mb-1">SOURCE CODE / BOOLEAN EQUATION</label>
+                       <textarea placeholder="(A AND NOT B) OR C" className="w-full h-24 bg-transparent text-[var(--crt-fg)] border-2 border-[var(--crt-fg)] p-3 focus:outline-none focus:border-[var(--stamp)] resize-none font-sans" value={newFormula.code || ''} onChange={(e) => setNewFormula({...newFormula, code: e.target.value})} />
+                     </div>
+                     <button onClick={() => {
+                         if(newFormula.title && newFormula.code) {
+                           dispatch({ type: 'ADD_FORMULA', payload: { id: Date.now(), title: newFormula.title, code: newFormula.code, tags: 'Custom' }});
+                           setNewFormula({ title: '', code: '' }); setSelectedTtId(''); toast('EQUATION COMPILED AND SECURED', 'success');
+                         } else { toast('INCOMPLETE COMPILER ARGUMENTS', 'warning'); }
+                       }} className="mt-2 w-full border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] p-3 font-display uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] transition-colors cursor-pointer text-xl">
+                       [ STORE IN SECURED VAULT ]
+                     </button>
+                   </div>
+                </div>
+                <div className="flex flex-col gap-4 mt-4">
+                  <span className="label">SECURED FORMULAS</span>
+                  {state.formulas.map(form => (
+                    <div key={form.id} className="panel p-0 border-stamped bg-[var(--paper)]">
+                      <div className="head bg-[var(--card)]">
+                         <span className="font-bold">{form.title}</span>
+                         <div className="flex items-center gap-4">
+                           <button onClick={() => { navigator.clipboard.writeText(form.code); toast('SOURCE COPIED TO CLIPBOARD', 'info'); }} className="btn-ghost" title="COPY SOURCE">□ COPY</button>
+                           <button onClick={() => dispatch({type: 'DELETE_FORMULA', payload: form.id})} className="btn-ghost !text-[var(--rust)] font-bold">✕</button>
+                         </div>
+                      </div>
+                      <div className="body p-4 bg-[var(--paper)] border-t border-[var(--ink)]">
+                        <div className="bg-[var(--card)] p-4 border border-[var(--ink)] border-dashed">
+                          <code className="text-[14px] text-[var(--ink)] font-sans break-words block uppercase">{form.code}</code>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    function App() {
+      const [state, dispatch] = useReducer(matrixReducer, DEFAULT_STATE);
+      const [isLoaded, setIsLoaded] = useState(false);
+
+      useEffect(() => {
+        const saved = localStorage.getItem('ascend_matrix_tva_state_v3');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            dispatch({ type: 'IMPORT_STATE', payload: { ...DEFAULT_STATE, ...parsed } });
+          } catch (e) {
+            console.error('Failed to parse saved matrix state', e);
+          }
+        }
+        setIsLoaded(true);
+      }, []);
+
+      useEffect(() => {
+        if (isLoaded) localStorage.setItem('ascend_matrix_tva_state_v3', JSON.stringify(state));
+      }, [state, isLoaded]);
+
+      const totalTasks = state.tasks.length;
+      const compTasks = state.tasks.filter(t => t.status === 'done').length;
+
+      if (!isLoaded) return <div className="min-h-screen bg-[var(--paper)] text-[var(--ink)] flex items-center justify-center font-sans tracking-widest uppercase">INITIALIZING TERMINAL...</div>;
+
+      return (
+        <ToastProvider>
+          <MatrixContext.Provider value={{ state, dispatch }}>
+            
+            <style dangerouslySetInnerHTML={{__html: `
+              @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=VT323&family=DM+Mono:wght@400;500&display=swap');
+              
+              :root {
+                --paper: oklch(0.91 0.04 85);
+                --card: oklch(0.94 0.035 85);
+                --ink: oklch(0.25 0.04 60);
+                --muted-fg: oklch(0.45 0.04 60);
+                --stamp: oklch(0.58 0.19 45);
+                --rust: oklch(0.48 0.14 40);
+                --destructive: oklch(0.5 0.22 28);
+                --crt-bg: oklch(0.18 0.04 60);
+                --crt-fg: oklch(0.85 0.18 75);
+                --shadow-stamp: 4px 4px 0 0 var(--ink);
+                
+                --font-display: "Big Shoulders Display", "Oswald", sans-serif;
+                --font-sans: "DM Mono", "JetBrains Mono", ui-monospace, monospace;
+                --font-raster: "VT323", monospace;
+              }
+
+              html, body, #root { background-color: var(--paper) !important; color: var(--ink) !important; font-family: var(--font-sans) !important; margin: 0; padding: 0; min-height: 100vh; overflow-x: hidden !important; }
+              ::selection { background: var(--stamp); color: var(--paper); }
+
+              h1, h2, h3, .font-display { font-family: var(--font-display); margin: 0; }
+              .font-raster { font-family: var(--font-raster); }
+              .label { font: 500 12px var(--font-sans); text-transform: uppercase; letter-spacing: 0.25em; color: var(--muted-fg); margin-bottom: 8px; display: block; }
+
+              .border-stamped { border: 2px solid var(--ink) !important; box-shadow: var(--shadow-stamp) !important; border-radius: 0 !important; }
+              .border-stamped:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 0 var(--ink) !important; }
+              .border-dashed { border: 2px dashed var(--ink) !important; border-radius: 0 !important; }
+              
+              .panel { background: var(--card); border: 2px solid var(--ink); border-radius: 0 !important; position: relative; }
+              .panel .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--ink); padding: 10px 16px; font-family: var(--font-sans); font-size: 12px; text-transform: uppercase; letter-spacing: 0.15em; }
+              .panel .head .code { color: var(--ink); font-weight: bold; }
+              .panel .body { padding: 16px; }
+
+              .input { height: 44px; padding: 0 12px; background: var(--paper); border: 2px solid var(--ink); color: var(--ink); font: 400 14px var(--font-sans); border-radius: 0 !important; text-transform: uppercase; letter-spacing: 0.05em; }
+              .input:focus { outline: none; border-color: var(--stamp); box-shadow: var(--shadow-stamp); background: var(--card); }
+
+              .btn-stamp { background: var(--stamp); color: oklch(0.96 0.02 85); padding: 16px 28px; font: 800 16px var(--font-display); text-transform: uppercase; letter-spacing: 0.15em; border: 2px solid var(--ink); box-shadow: var(--shadow-stamp); border-radius: 0 !important; cursor: pointer; transition: transform 100ms linear, box-shadow 100ms linear; }
+              .btn-stamp:hover { transform: translate(2px, 2px); box-shadow: none; }
+              .btn-primary { background: var(--ink); color: var(--paper); padding: 10px 20px; font: 800 14px var(--font-display); text-transform: uppercase; letter-spacing: 0.15em; border: none; border-radius: 0 !important; cursor: pointer; transition: background 200ms; }
+              .btn-primary:hover { background: var(--stamp); }
+              .btn-outline { background: transparent; color: var(--ink); border: 2px solid var(--ink); padding: 10px 20px; font: 800 14px var(--font-display); text-transform: uppercase; letter-spacing: 0.15em; border-radius: 0 !important; cursor: pointer; transition: background 200ms, color 200ms; }
+              .btn-outline:hover { background: var(--ink); color: var(--paper); }
+              .btn-ghost { background: transparent; color: var(--ink); border: 0; padding: 0; font: 500 13px var(--font-sans); text-transform: uppercase; letter-spacing: 0.18em; border-bottom: 1px solid transparent; cursor: pointer; }
+              .btn-ghost:hover { border-bottom-color: var(--stamp); color: var(--stamp); }
+
+              .tva-stamp { display: inline-block; border: 3px double var(--stamp); color: var(--stamp); text-transform: uppercase; letter-spacing: 0.18em; padding: 0.4rem 0.9rem; font-family: var(--font-display); font-weight: 800; font-size: 14px; transform: rotate(-4deg); background: transparent; }
+              .kicker { font-family: var(--font-sans); font-size: 14px; text-transform: uppercase; letter-spacing: 0.4em; color: var(--stamp); margin-bottom: 16px; }
+              .section-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; border-bottom: 2px solid var(--ink); padding-bottom: 16px; }
+              .section-head .label { font-family: var(--font-sans); font-size: 14px; text-transform: uppercase; letter-spacing: 0.4em; color: var(--stamp); }
+              .section-head h2 { font-family: var(--font-display); font-weight: 900; text-transform: uppercase; font-size: clamp(2.5rem, 5vw, 4rem); line-height: 0.85; margin-top: 12px; }
+              
+              .topbar { font-size: 11px; font-family: var(--font-sans); letter-spacing: 0.15em; background: var(--ink); color: var(--paper); }
+              .topbar .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 24px; }
+              .status-dot { width: 8px; height: 8px; background: var(--stamp); display: inline-block; }
+
+              .table th { font: 500 11px var(--font-sans); text-transform: uppercase; letter-spacing: 0.25em; color: var(--muted-fg); border-bottom: 1px solid var(--ink); padding: 8px; text-align: left; }
+              .table td { font: 400 14px var(--font-sans); padding: 12px 8px; border-bottom: 1px dashed color-mix(in oklab, var(--ink) 40%, transparent); }
+
+              .ledger { font-family: var(--font-sans); font-size: 13px; }
+              .ledger .row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; padding: 12px 0; border-bottom: 1px dashed color-mix(in oklab, var(--ink) 40%, transparent); align-items: center; }
+              .ledger .row.head { border-bottom: 1px solid var(--ink); text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted-fg); }
+              .ledger .status-warn { color: var(--stamp); }
+
+              .crt-box { position: relative; padding: 24px; border: 2px solid var(--ink); box-shadow: var(--shadow-stamp); font-family: var(--font-sans); font-size: 14px; line-height: 1.6; background: var(--crt-bg); color: var(--crt-fg); text-shadow: 0 0 6px oklch(0.78 0.2 60 / 0.7); }
+              .crt-box .tag { border: 1px solid currentColor; padding: 4px 12px; display: inline-block; text-transform: uppercase; letter-spacing: 0.15em; font-size: 12px; margin-bottom: 16px; opacity: 0.7; }
+              
+              .seal { position: relative; width: 64px; height: 64px; flex-shrink: 0; color: var(--ink); }
+              .seal svg { width: 100%; height: 100%; }
+              .seal-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+              
+              .corner { position: absolute; width: 16px; height: 16px; border: 2px solid var(--ink); pointer-events: none; z-index: 20; }
+              .corner.tl { top: 8px; left: 8px; border-right: 0; border-bottom: 0; }
+              .corner.tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; }
+              .corner.bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; }
+              .corner.br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
+
+              @keyframes blink { 50% { opacity: 0; } }
+              .blink { animation: blink 1s steps(2) infinite; }
+              @keyframes spin-slow { to { transform: rotate(360deg); } }
+              .spin-slow { animation: spin-slow 30s linear infinite; }
+              @keyframes flow { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
+              .animate-flow { animation: flow 4s linear infinite; }
+              
+              .scanlines::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, oklch(0 0 0 / 0.08) 0 1px, transparent 1px 3px); }
+              
+              .grain { position: relative; min-height: 100vh; display: flex; flex-direction: column; background: var(--paper); }
+              .grain::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 50; background-image: radial-gradient(oklch(0 0 0 / 0.18) 1px, transparent 1px), radial-gradient(oklch(0 0 0 / 0.12) 1px, transparent 1px); background-size: 3px 3px, 7px 7px; background-position: 0 0, 1px 1px; mix-blend-mode: multiply; opacity: 0.35; }
+              
+              footer { background: var(--ink); color: var(--paper); margin-top: 64px; border-top: 2px solid var(--ink); position: relative; z-index: 20; }
+              footer .grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 32px; padding: 48px 24px; font-family: var(--font-sans); }
+              @media (min-width: 1024px) { footer .grid { grid-template-columns: repeat(4, 1fr); } }
+              footer .col h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.6; margin-bottom: 12px; }
+              footer .col ul { display: flex; flex-direction: column; gap: 6px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.15em; }
+              footer .bottom { border-top: 1px solid oklch(0.91 0.04 85 / 0.3); }
+              footer .bottom .row { display: flex; flex-wrap: wrap; justify-content: space-between; padding: 12px 24px; font-family: var(--font-sans); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.7; }
+
+              .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+              .custom-scrollbar::-webkit-scrollbar-track { background: var(--paper); border-left: 2px solid var(--ink); border-top: 2px solid var(--ink); }
+              .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--paper); }
+            `}} />
+
+            <div className="grain w-full">
+              
+              <div className="topbar shrink-0">
+                <div className="row">
+                  <div className="flex gap-6 items-center">
+                    <span>SYSTEM ACTIVE</span>
+                    <span className="hidden sm:inline">◆ ENV: LOCAL_DEV</span>
+                  </div>
+                  <div className="flex gap-6 items-center">
+                    <span className="hidden sm:inline">CLEARANCE: ENGINEER</span>
+                    <span className="flex items-center gap-2">NET LINK <div className="status-dot blink"></div></span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col p-4 lg:p-8 relative z-10 max-w-[1400px] mx-auto w-full min-h-0">
+                
+                <div className="corner tl hidden lg:block"></div>
+                <div className="corner tr hidden lg:block"></div>
+                <div className="corner bl hidden lg:block"></div>
+                <div className="corner br hidden lg:block"></div>
+
+                <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 border-b-[3px] border-[var(--ink)] pb-4 gap-6 shrink-0 relative">
+                  <div className="flex gap-6 items-center">
+                    <div className="seal hidden sm:block shrink-0" style={{ width: 'clamp(90px, 12vw, 130px)', height: 'clamp(90px, 12vw, 130px)' }}>
+                      <svg viewBox="0 0 100 100" className="spin-slow absolute inset-0 w-full h-full">
+                        <defs>
+                          <path id="circle" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
+                        </defs>
+                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="2.5">
+                          <textPath href="#circle">· ENGINEERING VARIANCE AUTHORITY · FOR ALL TIME · ALWAYS ·</textPath>
+                        </text>
+                      </svg>
+                      <div className="seal-center">
+                        <img src="EVA.png" alt="EVA Logo" style={{ width: '70%', height: '70%', borderRadius: '50%', objectFit: 'contain' }} />
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-center py-1">
+                      <div className="kicker !mb-2 leading-none">◆ PROJECT IDENTIFIER: ASCEND ◆ RESTRICTED DISTRIBUTION</div>
+                      <h1 className="font-display font-black uppercase tracking-tight leading-[0.85] text-4xl md:text-6xl lg:text-7xl">
+                        ENGINEERING MATRIX
+                      </h1>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col items-end shrink-0 bg-[var(--card)] border-2 border-[var(--ink)] p-3 shadow-[4px_4px_0_0_var(--ink)]">
+                    <span className="label !mb-1 text-[10px]">GLOBAL VELOCITY</span>
+                    <div className="font-display font-black text-4xl leading-none">
+                      {compTasks} <span className="opacity-40 text-2xl">/ {totalTasks}</span>
+                    </div>
+                  </div>
+                </header>
+
+                <main className="flex-1 flex flex-col gap-6 lg:gap-8 pb-12 w-full">
+                  {/* Top Layer: Vault & Tasks */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+                    <section className="lg:col-span-5 flex flex-col">
+                      <SyllabusVault />
+                    </section>
+                    <section className="lg:col-span-7 flex flex-col">
+                      <TaskMatrix />
+                    </section>
+                  </div>
+
+                  {/* Middle Layer: Temporal Loom */}
+                  <section className="w-full flex flex-col">
+                    <TemporalLoom />
+                  </section>
+
+                  {/* Bottom Layer: Nexus & Console */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+                    <section className="lg:col-span-6 flex flex-col">
+                      <NexusLedger />
+                    </section>
+                    <section className="lg:col-span-6 flex flex-col">
+                      <ResourceConsole />
+                    </section>
+                  </div>
+                </main>
+              </div>
+
+              <footer>
+                <div className="grid max-w-[1400px] mx-auto">
+                  <div className="col">
+                    <h4>EVA Protocol</h4>
+                    <ul>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">The Sacred Blueprint</a></li>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Resource Ledgers</a></li>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Temporal Engineering</a></li>
+                    </ul>
+                  </div>
+                  <div className="col">
+                    <h4>Temporal Variance Logs</h4>
+                    <ul>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Nexus Incidents</a></li>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Variance Reports</a></li>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Pruned Commits</a></li>
+                    </ul>
+                  </div>
+                  <div className="col">
+                    <h4>Authority Level</h4>
+                    <ul>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Minuteman (Dev)</a></li>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Hunter (QA)</a></li>
+                      <li><a href="#" className="hover:text-[var(--stamp)] transition-colors">Time-Keeper (Admin)</a></li>
+                    </ul>
+                  </div>
+                  <div className="col flex justify-end items-end">
+                    <div className="seal" style={{ color: 'var(--stamp)', opacity: 0.8 }}>
+                      <svg viewBox="0 0 100 100" className="spin-slow">
+                        <defs>
+                          <path id="circle-footer" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
+                        </defs>
+                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="2.5">
+                          <textPath href="#circle-footer">· ENGINEERING VARIANCE AUTHORITY · FOR ALL TIME · ALWAYS ·</textPath>
+                        </text>
+                      </svg>
+                      <div className="seal-center">
+                        <img src="EVA.png" alt="EVA Logo" style={{ width: '70%', height: '70%', borderRadius: '50%', objectFit: 'contain' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bottom">
+                  <div className="row max-w-[1400px] mx-auto w-full">
+                    <span>◆ ENGINEERING MATRIX LOG</span>
+                    <span className="font-bold tracking-widest text-[var(--stamp)]">EVA. FOR ALL TIME. ALWAYS.</span>
+                  </div>
+                </div>
+              </footer>
+
+            </div>
+          </MatrixContext.Provider>
+        </ToastProvider>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
