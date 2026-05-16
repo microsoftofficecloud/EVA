@@ -43,7 +43,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useReducer, createContext, useContext } = React;
+    const { useState, useEffect, useReducer, createContext, useContext, useRef } = React;
 
     // --- Global State & Persistence ---
     const DEFAULT_STATE = {
@@ -62,8 +62,8 @@
         { id: 2, course: "ENG 202", deliverable: "3-Bit Signed Calculator", deadline: "2026-06-01", type: "Lab Build", status: "active" }
       ],
       formulas: [
-        { id: 1, title: "Euler's Identity", code: "e^(i*pi) + 1 = 0", tags: "Math" },
-        { id: 2, title: "Ohm's Law", code: "V = I * R", tags: "Physics" }
+        { id: 1, title: "Euler's Identity", code: "e^(i*pi) + 1 = 0", tags: "Equation" },
+        { id: 2, title: "Ohm's Law", code: "V = I * R", tags: "Equation" }
       ],
       truthTables: [],
       incidents: [
@@ -71,17 +71,25 @@
         { id: 2, title: "VCC Short to Ground", description: "Breadboard rail overheating near 74HC08.", status: "pruned", steps: [{id: 201, text: "Check IC orientation", done: true}, {id: 202, text: "Meter continuity", done: true}] }
       ],
       stats: { clearancePoints: 0, efficiencyYield: 100 },
-      settings: { scanlinesEnabled: true, userDesignation: "ENGINEER", envName: "LOCAL_DEV", theme: "light", focusDuration: 25 }
+      settings: { scanlinesEnabled: true, userDesignation: "ENGINEER", envName: "LOCAL_DEV", theme: "light", focusDuration: 25, autoPrune: false, accentColor: "orange" }
     };
 
     function matrixReducer(state, action) {
       switch (action.type) {
         case 'ADD_TASK': return { ...state, tasks: [...(state.tasks || []), action.payload] };
         case 'UPDATE_TASK': return { ...state, tasks: (state.tasks || []).map(t => t.id === action.payload.id ? { ...t, ...action.payload } : t) };
-        case 'TOGGLE_TASK_STATUS': return { ...state, tasks: (state.tasks || []).map(t => t.id === action.payload ? { ...t, status: t.status === 'todo' ? 'done' : 'todo' } : t) };
+        case 'TOGGLE_TASK_STATUS': {
+          const updatedTasks = (state.tasks || []).map(t => t.id === action.payload ? { ...t, status: t.status === 'todo' ? 'done' : 'todo' } : t);
+          if (state.settings?.autoPrune) {
+             return { ...state, tasks: updatedTasks.filter(t => t.status !== 'done') };
+          }
+          return { ...state, tasks: updatedTasks };
+        }
         case 'TOGGLE_TASK_TODAY': return { ...state, tasks: (state.tasks || []).map(t => t.id === action.payload ? { ...t, isToday: !t.isToday } : t) };
         case 'DELETE_TASK': return { ...state, tasks: (state.tasks || []).filter(t => t.id !== action.payload) };
         case 'PRUNE_COMPLETED_TASKS': return { ...state, tasks: (state.tasks || []).filter(t => t.status !== 'done') };
+        case 'PURGE_INCIDENTS': return { ...state, incidents: [] };
+        case 'PURGE_INVENTORY': return { ...state, inventory: [] };
         case 'ADD_INVENTORY': return { ...state, inventory: [...(state.inventory || []), action.payload] };
         case 'UPDATE_INVENTORY': return { ...state, inventory: (state.inventory || []).map(i => i.id === action.payload.id ? { ...i, ...action.payload } : i) };
         case 'DELETE_INVENTORY': return { ...state, inventory: (state.inventory || []).filter(i => i.id !== action.payload) };
@@ -213,6 +221,9 @@
 
       const scanlinesOn = state.settings?.scanlinesEnabled !== false;
       const isDark = state.settings?.theme === 'dark';
+      const autoPrune = state.settings?.autoPrune === true;
+
+      const changeAccent = (color) => dispatch({ type: 'UPDATE_SETTINGS', payload: { accentColor: color } });
 
       return (
         <div className="fixed inset-0 z-[100] flex bg-black/60 backdrop-blur-sm p-0">
@@ -224,6 +235,7 @@
              
              <div className="body flex flex-col gap-8 p-6 overflow-y-auto custom-scrollbar flex-1">
                 
+                {/* IDENTITY SECTION */}
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col gap-2">
                     <label className="label !mb-0 text-[10px] sm:text-xs">USER DESIGNATION</label>
@@ -235,25 +247,37 @@
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-4 border-y border-dashed border-[var(--ink)] py-6 px-1">
+                {/* VISUAL PROTOCOLS SECTION */}
+                <div className="flex flex-col gap-6 border-y border-dashed border-[var(--ink)] py-8 px-1 my-2">
                   <div className="flex items-center justify-between">
                     <span className="label !mb-0 text-[10px] sm:text-xs">DARK PROTOCOL</span>
                     <button onClick={toggleTheme} className={`btn-square w-12 h-6 flex items-center p-1 rounded-full transition-colors ${isDark ? 'bg-[var(--stamp)] !border-[var(--stamp)]' : 'bg-[var(--card)]'}`}>
                        <div className={`w-4 h-4 rounded-full bg-[var(--paper)] transition-transform duration-200 ${isDark ? 'translate-x-5' : 'translate-x-0'}`}></div>
                     </button>
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mt-2">
                     <span className="label !mb-0 text-[10px] sm:text-xs">CRT SCANLINES</span>
                     <button onClick={() => toggleSetting('scanlinesEnabled')} className={`btn-square w-12 h-6 flex items-center p-1 rounded-full transition-colors ${scanlinesOn ? 'bg-[var(--stamp)] !border-[var(--stamp)]' : 'bg-[var(--card)]'}`}>
                        <div className={`w-4 h-4 rounded-full bg-[var(--paper)] transition-transform duration-200 ${scanlinesOn ? 'translate-x-5' : 'translate-x-0'}`}></div>
                     </button>
                   </div>
+                  
+                  <div className="flex flex-col gap-2 mt-4">
+                    <span className="font-sans text-[11px] sm:text-[13px] uppercase font-bold opacity-70">PHOSPHOR ACCENT</span>
+                    <div className="flex gap-2 mt-1">
+                      <button onClick={() => changeAccent('orange')} className={`w-8 h-8 rounded-full border-2 ${state.settings?.accentColor === 'orange' || !state.settings?.accentColor ? 'border-[var(--ink)] scale-110 shadow-[2px_2px_0_0_var(--ink)]' : 'border-transparent opacity-60 hover:opacity-100'} bg-[#db5b24] transition-all`}></button>
+                      <button onClick={() => changeAccent('cyan')} className={`w-8 h-8 rounded-full border-2 ${state.settings?.accentColor === 'cyan' ? 'border-[var(--ink)] scale-110 shadow-[2px_2px_0_0_var(--ink)]' : 'border-transparent opacity-60 hover:opacity-100'} bg-[#0ea5e9] transition-all`}></button>
+                      <button onClick={() => changeAccent('green')} className={`w-8 h-8 rounded-full border-2 ${state.settings?.accentColor === 'green' ? 'border-[var(--ink)] scale-110 shadow-[2px_2px_0_0_var(--ink)]' : 'border-transparent opacity-60 hover:opacity-100'} bg-[#16a34a] transition-all`}></button>
+                      <button onClick={() => changeAccent('magenta')} className={`w-8 h-8 rounded-full border-2 ${state.settings?.accentColor === 'magenta' ? 'border-[var(--ink)] scale-110 shadow-[2px_2px_0_0_var(--ink)]' : 'border-transparent opacity-60 hover:opacity-100'} bg-[#d946ef] transition-all`}></button>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex flex-col gap-4 border-b border-dashed border-[var(--ink)] pb-6 px-2">
-                  <span className="label !mb-0 text-[10px] sm:text-xs">WORKFLOW AUTOMATION</span>
-                  <div className="flex flex-col gap-2">
-                    <label className="label !mb-0 text-[9px] sm:text-[10px] opacity-70">CHRONO-MONITOR DURATION (MINUTES)</label>
+                {/* WORKFLOW AUTOMATION SECTION */}
+                <div className="flex flex-col gap-5 border-b border-dashed border-[var(--ink)] pb-8 px-1 mb-4">
+                  <span className="label !mb-1 text-[10px] sm:text-xs pt-1">WORKFLOW AUTOMATION</span>
+                  <div className="flex flex-col gap-3">
+                    <label className="label !mb-1 text-[9px] sm:text-[10px] opacity-70">CHRONO-MONITOR DURATION (MINUTES)</label>
                     <div className="flex gap-2">
                       {[15, 25, 45, 60].map(mins => (
                         <button 
@@ -274,24 +298,41 @@
                        onChange={e => dispatch({ type: 'UPDATE_SETTINGS', payload: { focusDuration: parseInt(e.target.value) || 25 }})} 
                     />
                   </div>
+
+                  <div className="flex items-center justify-between mt-4">
+                    <span className="text-[11px] sm:text-[13px] uppercase font-bold text-[var(--ink)] w-3/4 leading-snug">AUTO-PRUNE COMPLETED DIRECTIVES</span>
+                    <button onClick={() => toggleSetting('autoPrune')} className={`btn-square w-12 h-6 flex items-center p-1 rounded-full transition-colors ${autoPrune ? 'bg-[var(--stamp)] !border-[var(--stamp)]' : 'bg-[var(--card)]'}`}>
+                       <div className={`w-4 h-4 rounded-full bg-[var(--paper)] transition-transform duration-200 ${autoPrune ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex flex-col gap-3">
+                {/* DATA MANAGEMENT SECTION */}
+                <div className="flex flex-col gap-3 pt-2">
                   <span className="label !mb-0 text-[10px] sm:text-xs">DATA MANAGEMENT</span>
                   <div className="flex gap-3">
-                    <button onClick={handleExport} className="btn-outline flex-1 !text-[10px] sm:!text-xs !py-2">EXPORT ↳</button>
-                    <label className="btn-outline flex-1 !text-[10px] sm:!text-xs !py-2 text-center cursor-pointer">
+                    <button onClick={handleExport} className="btn-outline flex-1 !text-[10px] sm:!text-xs !py-3">EXPORT ↳</button>
+                    <label className="btn-outline flex-1 !text-[10px] sm:!text-xs !py-3 text-center cursor-pointer">
                       IMPORT ↰
                       <input type="file" accept=".json" className="hidden" onChange={handleImport} />
                     </label>
                   </div>
                   
                   <div className="flex flex-col gap-3 mt-4">
+                    <span className="text-[10px] sm:text-[11px] uppercase tracking-widest font-bold opacity-70 text-[var(--destructive)]">DANGER ZONE</span>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => { if(window.confirm("PURGE ALL INCIDENTS?")) { dispatch({ type: 'PURGE_INCIDENTS' }); toast('INCIDENTS PURGED.', 'warning'); } }} className="btn-outline !border-[var(--destructive)] !text-[var(--destructive)] hover:!bg-[var(--destructive)] hover:!text-[var(--paper)] !text-[9px] !py-3">
+                        PURGE INCIDENTS
+                      </button>
+                      <button onClick={() => { if(window.confirm("PURGE ALL INVENTORY?")) { dispatch({ type: 'PURGE_INVENTORY' }); toast('INVENTORY PURGED.', 'warning'); } }} className="btn-outline !border-[var(--destructive)] !text-[var(--destructive)] hover:!bg-[var(--destructive)] hover:!text-[var(--paper)] !text-[9px] !py-3">
+                        PURGE INVENTORY
+                      </button>
+                    </div>
                     <button onClick={handlePruneCompletedTasks} className="btn-outline !border-[var(--stamp)] !text-[var(--stamp)] hover:!bg-[var(--stamp)] hover:!text-[var(--paper)] !text-[10px] sm:!text-xs !py-3 w-full">
                       PRUNE COMPLETED TASKS
                     </button>
-                    <button onClick={handleReset} className="btn-outline !border-[var(--destructive)] !text-[var(--destructive)] hover:!bg-[var(--destructive)] hover:!text-[var(--paper)] !text-[10px] sm:!text-xs !py-3 w-full">
-                      ⚠ INITIATE FULL PRUNE
+                    <button onClick={handleReset} className="btn-outline !border-[var(--destructive)] !bg-[var(--destructive)] !text-[var(--paper)] hover:opacity-80 !text-[10px] sm:!text-xs !py-3 w-full">
+                      ⚠ INITIATE FULL SYSTEM RESET
                     </button>
                   </div>
                 </div>
@@ -368,7 +409,7 @@
         <div className="flex flex-col bg-[var(--paper)] border-2 border-[var(--ink)] relative w-full h-[520px] overflow-hidden shadow-[4px_4px_0_0_var(--ink)]">
           <div className="section-head sticky top-0 z-30 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
             <div>
-              <div className="label">§III</div>
+              <div className="label">§IV</div>
               <h2 className="text-3xl sm:text-4xl">TEMPORAL LOOM</h2>
             </div>
             <span className="label !mb-0 text-[10px] text-[var(--stamp)] animate-pulse hidden sm:block">◆ MONITORING TIMELINE BRANCHES</span>
@@ -523,7 +564,7 @@
         <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
           <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
             <div>
-              <div className="label">§IV</div>
+              <div className="label">§V</div>
               <h2 className="text-3xl sm:text-4xl">NEXUS INCIDENTS</h2>
             </div>
             <div className="flex border-2 border-[var(--ink)] w-full sm:w-auto mt-2 sm:mt-0">
@@ -844,7 +885,7 @@
               </div>
             </div>
             <div className="flex flex-col items-end gap-2 sm:gap-3 shrink-0">
-              <span className="tva-stamp !text-[10px] sm:!text-[12px] !px-1 sm:!px-2" style={{ transform: task.weight > 7 ? 'rotate(-6deg)' : 'rotate(-2deg)', color: task.weight > 7 ? 'var(--stamp)' : 'inherit', borderColor: task.weight > 7 ? 'var(--stamp)' : 'var(--ink)' }}>W:{task.weight}</span>
+              <span className="tva-stamp !text-[10px] sm:text-[12px] !px-1 sm:!px-2" style={{ transform: task.weight > 7 ? 'rotate(-6deg)' : 'rotate(-2deg)', color: task.weight > 7 ? 'var(--stamp)' : 'inherit', borderColor: task.weight > 7 ? 'var(--stamp)' : 'var(--ink)' }}>W:{task.weight}</span>
               <div className="flex gap-2 sm:gap-4 mt-1">
                 {task.status !== 'done' && (
                   <button onClick={() => dispatch({ type: 'TOGGLE_TASK_TODAY', payload: task.id })} className="btn-ghost font-bold text-base sm:text-lg" disabled={timerActive} title={task.isToday ? "DEMOTE TO BACKLOG" : "PROMOTE TO FOCUS"}>
@@ -965,6 +1006,206 @@
       );
     };
 
+    const LogicCircuitViewer = ({ code }) => {
+      if (!code) return <div className="text-[var(--muted-fg)] font-raster text-sm p-4">AWAITING LOGIC INPUT</div>;
+
+      try {
+        let isPrimitive = false;
+        let op = '';
+        let inputs = [];
+
+        if (code === '0' || code === '1') {
+          return <div className="p-8 text-center text-3xl font-bold font-raster fill-[var(--ink)]">F = {code}</div>;
+        } else if (/^[A-Z]['′]?$/.test(code)) {
+          isPrimitive = true; op = 'WIRE'; inputs = [code];
+        } else if (/^\((?:[A-Z]\s*\+\s*)+[A-Z]\)['′]$/.test(code)) {
+          isPrimitive = true; op = 'NOR'; inputs = code.match(/[A-Z]/g);
+        } else if (/^\((?:[A-Z])+\)['′]$/.test(code)) {
+          isPrimitive = true; op = 'NAND'; inputs = code.match(/[A-Z]/g);
+        } else if (/^(?:[A-Z]['′]?\s*\+\s*)+[A-Z]['′]?$/.test(code)) {
+          isPrimitive = true; op = 'OR'; inputs = code.match(/[A-Z]['′]?/g);
+        } else if (/^(?:[A-Z]['′]?\s*(?:⊕|\\oplus)\s*)+[A-Z]['′]?$/.test(code)) {
+          isPrimitive = true; op = 'XOR'; inputs = code.match(/[A-Z]['′]?/g);
+        } else if (/^(?:[A-Z]['′]?\s*(?:⊙|\\odot)\s*)+[A-Z]['′]?$/.test(code)) {
+          isPrimitive = true; op = 'XNOR'; inputs = code.match(/[A-Z]['′]?/g);
+        } else if (/^(?:[A-Z]['′]?){2,}$/.test(code)) {
+          isPrimitive = true; op = 'AND'; inputs = code.match(/[A-Z]['′]?/g);
+        }
+
+        const getGateColor = (gateOp) => {
+          if (gateOp.includes('AND')) return 'var(--stamp)';
+          if (gateOp.includes('OR') && !gateOp.includes('X')) return 'var(--rust)';
+          return 'var(--ink)';
+        };
+
+        const SVG_GATES = {
+          AND: (x, y) => <path d={`M ${x} ${y-16} L ${x+14} ${y-16} A 16 16 0 0 1 ${x+14} ${y+16} L ${x} ${y+16} Z`} fill="color-mix(in srgb, var(--stamp) 15%, var(--card))" stroke="var(--stamp)" strokeWidth="2.5" strokeLinejoin="round" />,
+          NAND: (x, y) => <g><path d={`M ${x} ${y-16} L ${x+14} ${y-16} A 16 16 0 0 1 ${x+14} ${y+16} L ${x} ${y+16} Z`} fill="color-mix(in srgb, var(--stamp) 15%, var(--card))" stroke="var(--stamp)" strokeWidth="2.5" strokeLinejoin="round" /><circle cx={x+34} cy={y} r="4" fill="var(--card)" stroke="var(--stamp)" strokeWidth="2.5" /></g>,
+          OR: (x, y) => <path d={`M ${x} ${y-16} Q ${x+14} ${y-16} ${x+30} ${y} Q ${x+14} ${y+16} ${x} ${y+16} Q ${x+10} ${y} ${x} ${y-16} Z`} fill="color-mix(in srgb, var(--rust) 15%, var(--card))" stroke="var(--rust)" strokeWidth="2.5" strokeLinejoin="round" />,
+          NOR: (x, y) => <g><path d={`M ${x} ${y-16} Q ${x+14} ${y-16} ${x+30} ${y} Q ${x+14} ${y+16} ${x} ${y+16} Q ${x+10} ${y} ${x} ${y-16} Z`} fill="color-mix(in srgb, var(--rust) 15%, var(--card))" stroke="var(--rust)" strokeWidth="2.5" strokeLinejoin="round" /><circle cx={x+34} cy={y} r="4" fill="var(--card)" stroke="var(--rust)" strokeWidth="2.5" /></g>,
+          XOR: (x, y) => <g><path d={`M ${x+6} ${y-16} Q ${x+20} ${y-16} ${x+36} ${y} Q ${x+20} ${y+16} ${x+6} ${y+16} Q ${x+16} ${y} ${x+6} ${y-16} Z`} fill="color-mix(in srgb, var(--ink) 15%, var(--card))" stroke="var(--ink)" strokeWidth="2.5" strokeLinejoin="round" /><path d={`M ${x} ${y-16} Q ${x+10} ${y} ${x} ${y+16}`} fill="none" stroke="var(--ink)" strokeWidth="2.5" strokeLinecap="round" /></g>,
+          XNOR: (x, y) => <g><path d={`M ${x+6} ${y-16} Q ${x+20} ${y-16} ${x+36} ${y} Q ${x+20} ${y+16} ${x+6} ${y+16} Q ${x+16} ${y} ${x+6} ${y-16} Z`} fill="color-mix(in srgb, var(--ink) 15%, var(--card))" stroke="var(--ink)" strokeWidth="2.5" strokeLinejoin="round" /><path d={`M ${x} ${y-16} Q ${x+10} ${y} ${x} ${y+16}`} fill="none" stroke="var(--ink)" strokeWidth="2.5" strokeLinecap="round" /><circle cx={x+40} cy={y} r="4" fill="var(--card)" stroke="var(--ink)" strokeWidth="2.5" /></g>,
+        };
+
+        if (isPrimitive) {
+          if (op === 'WIRE') {
+            return (
+              <div className="w-full overflow-x-auto custom-scrollbar flex justify-center p-2 min-h-[128px] items-center">
+                <svg viewBox="0 0 220 128" className="h-auto w-full max-w-[220px] font-sans" preserveAspectRatio="xMidYMid meet">
+                  <text x="20" y="68" fill="var(--stamp)" className="text-[16px] font-black">{inputs[0]}</text>
+                  <line x1="35" y1="64" x2="160" y2="64" stroke="var(--stamp)" strokeWidth="2.5" />
+                  <text x="170" y="68" fill="var(--stamp)" className="text-[16px] font-bold">F</text>
+                </svg>
+              </div>
+            );
+          }
+
+          const getTipOffset = (g) => {
+            if (g === 'AND' || g === 'OR') return 30;
+            if (g === 'XOR') return 36;
+            if (g === 'NAND' || g === 'NOR') return 38;
+            if (g === 'XNOR') return 44;
+            return 0;
+          };
+          
+          const finalOutX = 90 + getTipOffset(op);
+          const gateColor = getGateColor(op);
+
+          return (
+            <div className="w-full overflow-x-auto custom-scrollbar flex justify-center p-2 min-h-[128px] items-center">
+              <svg viewBox="0 0 220 128" className="h-auto w-full max-w-[220px] font-sans" preserveAspectRatio="xMidYMid meet">
+                {/* 1. Input Lines first so they fall behind the solid gates */}
+                {inputs.map((inp, idx) => {
+                   const startY = 64 - ((inputs.length - 1) * 10);
+                   const y = startY + idx * 20;
+                   return (
+                     <g key={idx}>
+                       <text x="20" y={y+5} fill={gateColor} className="text-[16px] font-black">{inp}</text>
+                       <line x1="35" y1={y} x2="102" y2={y} stroke={gateColor} strokeWidth="2.5" />
+                     </g>
+                   )
+                })}
+                {/* 2. Gate over the input lines */}
+                {SVG_GATES[op](90, 64)}
+                {/* 3. Output Line */}
+                <line x1={finalOutX} y1="64" x2="160" y2="64" stroke={gateColor} strokeWidth="2.5" />
+                <text x="170" y="68" fill={gateColor} className="text-[16px] font-bold">F</text>
+              </svg>
+            </div>
+          );
+        }
+
+        const terms = code.split(/\s*\+\s*/);
+        const varSet = new Set();
+        const parsedTerms = terms.map(term => {
+           const factors = term.match(/[A-Z]['′]?/g) || [];
+           factors.forEach(f => {
+              const v = f.replace(/['′]/g, '');
+              varSet.add(v);
+           });
+           return factors;
+        });
+
+        const varList = Array.from(varSet).sort();
+        
+        const busSpacing = 30;
+        const startX = 30;
+        const andX = startX + varList.length * busSpacing + 40;
+        const termSpacing = 60;
+        const orX = andX + 80;
+        const totalHeight = Math.max(120, parsedTerms.length * termSpacing + 40);
+        const totalWidth = orX + 100;
+        
+        const firstY = 50;
+        const lastY = 50 + (parsedTerms.length - 1) * termSpacing;
+        const orCenterY = (firstY + lastY) / 2;
+
+        return (
+          <div className="w-full overflow-x-auto custom-scrollbar flex justify-center p-2">
+            <svg viewBox={`0 0 ${totalWidth} ${totalHeight}`} className="h-auto font-sans" style={{ width: '100%', minWidth: `${Math.min(totalWidth, 350)}px`, maxHeight: '400px' }} preserveAspectRatio="xMidYMid meet">
+               
+               {/* LAYER 1: Buses and Interconnect Lines */}
+               {varList.map((v, i) => {
+                  const x = startX + i * busSpacing;
+                  return (
+                     <g key={`bus-${v}`}>
+                       <text x={x} y={20} fill="var(--stamp)" className="font-black text-[16px]" textAnchor="middle">{v}</text>
+                       <line x1={x} y1={25} x2={x} y2={totalHeight-15} stroke="var(--stamp)" strokeWidth="2.5" className="opacity-40" />
+                     </g>
+                  );
+               })}
+
+               {parsedTerms.map((factors, termIdx) => {
+                  const y = 50 + termIdx * termSpacing;
+                  const orInY = parsedTerms.length > 1 ? (orCenterY + (termIdx - (parsedTerms.length - 1) / 2) * (20 / Math.max(1, parsedTerms.length - 1))) : y;
+                  
+                  return (
+                    <g key={`wiring-${termIdx}`}>
+                      {factors.map((factor, fIdx) => {
+                         const isNot = factor.includes("'") || factor.includes("′");
+                         const v = factor.replace(/['′]/g, '');
+                         const vIdx = varList.indexOf(v);
+                         const busX = startX + vIdx * busSpacing;
+                         const targetY = y + (factors.length > 1 ? (fIdx - (factors.length-1)/2) * 10 : 0);
+                         const targetGateX = factors.length > 1 ? andX : (parsedTerms.length > 1 ? orX : andX);
+                         
+                         const lineColor = factors.length > 1 ? 'var(--stamp)' : (parsedTerms.length > 1 ? 'var(--rust)' : 'var(--stamp)');
+                         
+                         return (
+                            <g key={`factor-${fIdx}`}>
+                              <circle cx={busX} cy={targetY} r="4" fill={lineColor} />
+                              <path d={`M ${busX} ${targetY} L ${targetGateX - (isNot ? 8 : -12)} ${targetY}`} fill="none" stroke={lineColor} strokeWidth="2.5" />
+                              {isNot && <circle cx={targetGateX-4} cy={targetY} r="4" fill="var(--card)" stroke={lineColor} strokeWidth="2.5" />}
+                            </g>
+                         )
+                      })}
+                      
+                      {/* AND to OR connection */}
+                      {parsedTerms.length > 1 && factors.length > 1 && (
+                         <path d={`M ${andX+30} ${y} L ${orX-15} ${y} L ${orX-15} ${orInY} L ${orX+12} ${orInY}`} fill="none" stroke="var(--rust)" strokeWidth="2.5" strokeLinejoin="round" />
+                      )}
+                    </g>
+                  )
+               })}
+
+               {/* LAYER 2: Gates */}
+               {parsedTerms.map((factors, termIdx) => {
+                  const y = 50 + termIdx * termSpacing;
+                  if (factors.length > 1) {
+                    return <g key={`gate-and-${termIdx}`}>{SVG_GATES['AND'](andX, y)}</g>;
+                  }
+                  return null;
+               })}
+               
+               {parsedTerms.length > 1 && SVG_GATES['OR'](orX, orCenterY)}
+
+               {/* LAYER 3: Output */}
+               {parsedTerms.length > 1 && (
+                 <g>
+                   <line x1={orX+30} y1={orCenterY} x2={orX+55} y2={orCenterY} stroke="var(--rust)" strokeWidth="2.5" />
+                   <text x={orX+65} y={orCenterY + 5} fill="var(--rust)" className="font-bold text-[16px]">F</text>
+                 </g>
+               )}
+               {parsedTerms.length === 1 && parsedTerms[0].length > 1 && (
+                 <g>
+                   <line x1={andX+30} y1={50} x2={andX+55} y2={50} stroke="var(--stamp)" strokeWidth="2.5" />
+                   <text x={andX+65} y={55} fill="var(--stamp)" className="font-bold text-[16px]">F</text>
+                 </g>
+               )}
+               {parsedTerms.length === 1 && parsedTerms[0].length === 1 && (
+                 <g>
+                   <line x1={andX+12} y1={50} x2={andX+35} y2={50} stroke="var(--stamp)" strokeWidth="2.5" />
+                   <text x={andX+45} y={55} fill="var(--stamp)" className="font-bold text-[16px]">F</text>
+                 </g>
+               )}
+            </svg>
+          </div>
+        );
+      } catch(e) {
+        return <div className="text-[var(--destructive)] font-raster text-sm p-4 text-center w-full">SCHEMATIC RENDER ERROR: INVALID LOGIC EQUATION</div>;
+      }
+    };
+
     const ResourceConsole = () => {
       const { state, dispatch } = useContext(MatrixContext);
       const toast = useContext(ToastContext);
@@ -974,9 +1215,13 @@
       const [ttInputs, setTtInputs] = useState(2);
       const [ttOutputs, setTtOutputs] = useState([{ name: 'F', values: {} }]);
       const [ttName, setTtName] = useState('');
-      const [newFormula, setNewFormula] = useState({ title: '', code: '' });
+      const [newFormula, setNewFormula] = useState({ title: '', code: '', tags: 'Equation' });
       const [selectedTtId, setSelectedTtId] = useState('');
       const [selectedTtOutIdx, setSelectedTtOutIdx] = useState(0);
+
+      // Latex Compiler Faux-Terminal State
+      const [isCompiling, setIsCompiling] = useState(false);
+      const [terminalLogs, setTerminalLogs] = useState([]);
 
       const updateInvQty = (id, current, delta) => dispatch({ type: 'UPDATE_INVENTORY', payload: { id, quantity: Math.max(0, current + delta) } });
 
@@ -1036,12 +1281,12 @@
         const lastBin = '1'.repeat(inputsCount);
         const firstBin = '0'.repeat(inputsCount);
 
-        if (onesCount === 1 && valuesMap[lastBin] === 1) return inputsList.join(' AND ');
-        if (onesCount === rows - 1 && valuesMap[firstBin] === 0) return inputsList.join(' OR ');
-        if (onesCount === rows - 1 && valuesMap[lastBin] === 0) return inputsList.join(' NAND ');
-        if (onesCount === 1 && valuesMap[firstBin] === 1) return inputsList.join(' NOR ');
-        if (isXOR) return inputsList.join(' XOR ');
-        if (isXNOR) return inputsList.join(' XNOR ');
+        if (onesCount === 1 && valuesMap[lastBin] === 1) return inputsList.join('');
+        if (onesCount === rows - 1 && valuesMap[firstBin] === 0) return inputsList.join(' + ');
+        if (onesCount === rows - 1 && valuesMap[lastBin] === 0) return `(${inputsList.join('')})'`;
+        if (onesCount === 1 && valuesMap[firstBin] === 1) return `(${inputsList.join(' + ')})'`;
+        if (isXOR) return inputsList.join(' ⊕ ');
+        if (isXNOR) return inputsList.join(' ⊙ ');
 
         const minterms = [];
         for (let i = 0; i < Math.pow(2, inputsCount); i++) {
@@ -1108,26 +1353,57 @@
             const parts = [];
             for (let i = 0; i < inputsCount; i++) {
                 if (pi[i] === '1') parts.push(inputsList[i]);
-                else if (pi[i] === '0') parts.push(`NOT ${inputsList[i]}`);
+                else if (pi[i] === '0') parts.push(`${inputsList[i]}'`);
             }
-            return parts.length > 1 ? `(${parts.join(' AND ')})` : parts[0];
+            return parts.join('');
         });
 
-        return terms.sort().join(' OR ');
+        return terms.sort().join(' + ');
       };
 
-      const handleExtractLogic = () => {
+      const handleExtractLogic = (type) => {
         const tt = (state.truthTables || []).find(t => t.id === parseInt(selectedTtId));
         if (!tt) return toast('NO MODULE SELECTED', 'warning');
-        setNewFormula({ title: `${tt.name} - ${tt.outputs[selectedTtOutIdx].name}`, code: generateBooleanEquation(tt.inputs, tt.outputs[selectedTtOutIdx].values) });
-        toast('LOGIC EXTRACTED TO TERMINAL', 'info');
+        
+        const equation = generateBooleanEquation(tt.inputs, tt.outputs[selectedTtOutIdx].values);
+        
+        if (type === 'eq') {
+          setNewFormula({ title: `${tt.name} - ${tt.outputs[selectedTtOutIdx].name}`, code: equation, tags: 'Equation' });
+          toast('LOGIC EQUATION EXTRACTED', 'info');
+        } else if (type === 'gates') {
+          setNewFormula({ title: `${tt.name} - ${tt.outputs[selectedTtOutIdx].name} GATES`, code: equation, tags: 'Gates' });
+          toast('LOGIC SCHEMATIC EXTRACTED', 'info');
+        }
+      };
+
+      const executeCompile = () => {
+        if(!newFormula.title || !newFormula.code) {
+          toast('INCOMPLETE COMPILER ARGUMENTS', 'warning');
+          return;
+        }
+        setIsCompiling(true);
+        setTerminalLogs(["> INITIALIZING " + (newFormula.tags === 'Gates' ? 'SCHEMATIC SYNTHESIZER' : 'COMPILER DAEMON') + "..."]);
+        
+        setTimeout(() => setTerminalLogs(prev => [...prev, "> ALLOCATING MEMORY..."]), 400);
+        setTimeout(() => setTerminalLogs(prev => [...prev, "> PARSING LOGIC AST..."]), 800);
+        setTimeout(() => setTerminalLogs(prev => [...prev, "> SYNTAX VALID. GENERATING..."]), 1400);
+        setTimeout(() => setTerminalLogs(prev => [...prev, "> SECURING TO VAULT..."]), 2000);
+
+        setTimeout(() => {
+          dispatch({ type: 'ADD_FORMULA', payload: { id: Date.now(), title: newFormula.title, code: newFormula.code, tags: newFormula.tags || 'Equation' }});
+          setNewFormula({ title: '', code: '', tags: 'Equation' });
+          setSelectedTtId('');
+          toast('SUCCESSFULLY SYNTHESIZED AND SECURED', 'success');
+          setIsCompiling(false);
+          setTerminalLogs([]);
+        }, 2500);
       };
 
       return (
         <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
           <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
             <div>
-              <div className="label">§V</div>
+              <div className="label">§VI</div>
               <h2 className="text-3xl sm:text-4xl">CONSOLE</h2>
             </div>
           </div>
@@ -1135,7 +1411,7 @@
           <div className="flex border-b-2 border-[var(--ink)] shrink-0">
             <button onClick={() => setActiveTab('inventory')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'inventory' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] border-r-2 border-[var(--ink)] hover:bg-[var(--paper)]'}`}>HARDWARE</button>
             <button onClick={() => setActiveTab('logic')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'logic' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] border-r-2 border-[var(--ink)] hover:bg-[var(--paper)]'}`}>LOGIC</button>
-            <button onClick={() => setActiveTab('formulas')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'formulas' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>LATEX</button>
+            <button onClick={() => setActiveTab('formulas')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'formulas' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>SYNTHESIS</button>
           </div>
 
           <div className="flex flex-col p-2 sm:p-4 overflow-y-auto custom-scrollbar min-h-[300px]">
@@ -1259,47 +1535,76 @@
             {/* FORMULAS TAB */}
             {activeTab === 'formulas' && (
               <div className="flex flex-col gap-4 sm:gap-6">
-                <div className="crt-box scanlines !p-4 sm:!p-6">
-                   <span className="tag mb-4 sm:mb-6 !text-[10px] sm:!text-[12px]">BOOLEAN LOGIC EXTRACTION TERMINAL</span>
-                   <div className="flex flex-col gap-3 sm:gap-4">
-                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-end border border-[var(--crt-fg)] border-dashed p-3 sm:p-4 mb-1 sm:mb-2">
-                       <div className="w-full sm:flex-1 min-w-[200px]">
-                         <label className="text-[9px] sm:text-[10px] uppercase tracking-widest opacity-60 block mb-1">SOURCE MODULE (TRUTH TABLE)</label>
-                         <select className="w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-2 focus:outline-none focus:border-[var(--stamp)] font-sans uppercase text-[11px] sm:text-[13px]" value={selectedTtId} onChange={(e) => { setSelectedTtId(e.target.value); setSelectedTtOutIdx(0); }}>
-                           <option value="" className="bg-[var(--crt-bg)]">[ MANUAL INPUT ]</option>
-                           {(state.truthTables || []).map(tt => <option key={tt.id} value={tt.id} className="bg-[var(--crt-bg)]">{tt.name}</option>)}
+                
+                {/* --- RETRO TERMINAL BLOCK --- */}
+                <div className="crt-box scanlines !p-4 sm:!p-6 animate-crt-flicker">
+                   <div className="flex items-center gap-2 mb-4 sm:mb-6 text-lg sm:text-xl font-raster text-[var(--stamp)]">
+                      <span>root@eva-sys:~/compiler$</span>
+                      {!isCompiling && <span className="w-2.5 h-4 sm:w-3 sm:h-5 bg-[var(--stamp)] animate-[blink_1s_step-end_infinite] vertical-text-bottom"></span>}
+                   </div>
+                   
+                   <div className="flex flex-col gap-4 sm:gap-5">
+                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-end border border-[var(--crt-fg)] border-dashed p-3 sm:p-4">
+                       <div className="w-full sm:flex-1 min-w-[150px]">
+                         <label className="text-[10px] sm:text-[12px] uppercase tracking-widest opacity-60 block mb-1 font-raster text-[var(--crt-fg)]">&gt; SOURCE_MODULE</label>
+                         <select className="terminal-input w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-1 sm:p-2 focus:outline-none focus:border-[var(--stamp)] font-raster uppercase text-sm sm:text-base" value={selectedTtId} onChange={(e) => { setSelectedTtId(e.target.value); setSelectedTtOutIdx(0); }} disabled={isCompiling}>
+                           <option value="" className="bg-[var(--crt-bg)] font-sans text-xs sm:text-sm tracking-widest">[ MANUAL INPUT ]</option>
+                           {(state.truthTables || []).map(tt => <option key={tt.id} value={tt.id} className="bg-[var(--crt-bg)] font-sans text-xs sm:text-sm tracking-widest">{tt.name}</option>)}
                          </select>
                        </div>
                        {selectedTtId && (
                          <div className="w-full sm:w-32 shrink-0">
-                           <label className="text-[9px] sm:text-[10px] uppercase tracking-widest opacity-60 block mb-1">TARGET OUTPUT</label>
-                           <select className="w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-2 focus:outline-none focus:border-[var(--stamp)] font-sans uppercase text-[11px] sm:text-[13px]" value={selectedTtOutIdx} onChange={(e) => setSelectedTtOutIdx(parseInt(e.target.value))}>
-                             {(state.truthTables || []).find(t => t.id === parseInt(selectedTtId))?.outputs.map((out, idx) => <option key={idx} value={idx} className="bg-[var(--crt-bg)]">{out.name}</option>)}
+                           <label className="text-[10px] sm:text-[12px] uppercase tracking-widest opacity-60 block mb-1 font-raster text-[var(--crt-fg)]">&gt; TGT_OUT</label>
+                           <select className="terminal-input w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-1 sm:p-2 focus:outline-none focus:border-[var(--stamp)] font-raster uppercase text-sm sm:text-base" value={selectedTtOutIdx} onChange={(e) => setSelectedTtOutIdx(parseInt(e.target.value))} disabled={isCompiling}>
+                             {(state.truthTables || []).find(t => t.id === parseInt(selectedTtId))?.outputs.map((out, idx) => <option key={idx} value={idx} className="bg-[var(--crt-bg)] font-sans text-xs sm:text-sm tracking-widest">{out.name}</option>)}
                            </select>
                          </div>
                        )}
-                       {selectedTtId && <button onClick={handleExtractLogic} className="btn-crt-fg w-full sm:w-auto border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] px-4 py-2 font-display uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] text-base sm:text-lg shrink-0 h-[43px]">EXTRACT ↳</button>}
+                       {selectedTtId && (
+                         <div className="flex gap-2 w-full sm:w-auto shrink-0 mt-2 sm:mt-0">
+                           <button onClick={() => handleExtractLogic('eq')} disabled={isCompiling} className="btn-crt-fg flex-1 sm:flex-none border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] px-3 py-1 sm:px-4 sm:py-2 font-raster uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] text-sm sm:text-base disabled:opacity-50">EQ ↳</button>
+                           <button onClick={() => handleExtractLogic('gates')} disabled={isCompiling} className="btn-crt-fg flex-1 sm:flex-none border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] px-3 py-1 sm:px-4 sm:py-2 font-raster uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] text-sm sm:text-base disabled:opacity-50">GATES ↳</button>
+                         </div>
+                       )}
+                     </div>
+
+                     <div>
+                       <label className="text-[10px] sm:text-[12px] uppercase tracking-widest opacity-80 block mb-1 font-raster text-[var(--stamp)]">&gt; INPUT DESIGNATION_</label>
+                       <input type="text" placeholder="E.G. QUADRATIC_FORMULA" className="terminal-input w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-dashed border-[var(--crt-fg)] p-2 focus:outline-none focus:border-solid focus:border-[var(--stamp)] font-raster uppercase text-base sm:text-lg placeholder:opacity-30" value={newFormula.title || ''} onChange={(e) => setNewFormula({...newFormula, title: e.target.value})} disabled={isCompiling} />
                      </div>
                      <div>
-                       <label className="text-[9px] sm:text-[10px] uppercase tracking-widest opacity-60 block mb-1">DESIGNATION</label>
-                       <input type="text" placeholder="E.G. QUADRATIC FORMULA" className="w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-[var(--crt-fg)] p-2 focus:outline-none focus:border-[var(--stamp)] font-sans uppercase text-[12px] sm:text-[14px]" value={newFormula.title || ''} onChange={(e) => setNewFormula({...newFormula, title: e.target.value})} />
+                       <label className="text-[10px] sm:text-[12px] uppercase tracking-widest opacity-80 block mb-1 font-raster text-[var(--stamp)]">&gt; INPUT SOURCE_CODE_</label>
+                       {newFormula.tags === 'Gates' ? (
+                         <div className="terminal-input w-full min-h-[160px] bg-[var(--crt-bg)] text-[var(--crt-fg)] border-2 border-dashed border-[var(--crt-fg)] p-2 relative flex flex-col" style={{"--gate-bg": "var(--crt-bg)"}}>
+                           <div className="flex justify-end w-full pb-2 shrink-0">
+                             <button onClick={() => setNewFormula({...newFormula, tags: 'Equation'})} className="text-[10px] sm:text-xs bg-[var(--crt-bg)] border border-[var(--crt-fg)] text-[var(--crt-fg)] px-2 py-1 hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] transition-colors z-20">EDIT AS TEXT</button>
+                           </div>
+                           <div className="flex-1 w-full relative">
+                             <LogicCircuitViewer code={newFormula.code} />
+                           </div>
+                         </div>
+                       ) : (
+                         <textarea placeholder="AB' + C" className="terminal-input w-full h-20 sm:h-24 bg-transparent text-[var(--crt-fg)] border-2 border-dashed border-[var(--crt-fg)] p-2 sm:p-3 focus:outline-none focus:border-solid focus:border-[var(--stamp)] resize-none font-raster text-base sm:text-lg placeholder:opacity-30" value={newFormula.code || ''} onChange={(e) => setNewFormula({...newFormula, code: e.target.value})} disabled={isCompiling} />
+                       )}
                      </div>
-                     <div>
-                       <label className="text-[9px] sm:text-[10px] uppercase tracking-widest opacity-60 block mb-1">SOURCE CODE / BOOLEAN EQUATION</label>
-                       <textarea placeholder="(A AND NOT B) OR C" className="w-full h-20 sm:h-24 bg-transparent text-[var(--crt-fg)] border-2 border-[var(--crt-fg)] p-2 sm:p-3 focus:outline-none focus:border-[var(--stamp)] resize-none font-sans text-[12px] sm:text-[14px]" value={newFormula.code || ''} onChange={(e) => setNewFormula({...newFormula, code: e.target.value})} />
-                     </div>
-                     <button onClick={() => {
-                         if(newFormula.title && newFormula.code) {
-                           dispatch({ type: 'ADD_FORMULA', payload: { id: Date.now(), title: newFormula.title, code: newFormula.code, tags: 'Custom' }});
-                           setNewFormula({ title: '', code: '' }); setSelectedTtId(''); toast('EQUATION COMPILED AND SECURED', 'success');
-                         } else { toast('INCOMPLETE COMPILER ARGUMENTS', 'warning'); }
-                       }} className="btn-crt-fg mt-2 w-full border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] p-2 sm:p-3 font-display uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] text-lg sm:text-xl">
-                       [ STORE IN SECURED VAULT ]
-                     </button>
+
+                     {isCompiling ? (
+                        <div className="flex flex-col gap-1 mt-4 text-[var(--stamp)] font-raster text-base sm:text-lg">
+                          {terminalLogs.map((log, i) => <div key={i}>{log}</div>)}
+                          <div className="flex items-center">
+                            <span className="w-2.5 h-4 sm:w-3 sm:h-5 bg-[var(--stamp)] animate-[blink_1s_step-end_infinite] vertical-text-bottom"></span>
+                          </div>
+                        </div>
+                     ) : (
+                        <button onClick={executeCompile} className="btn-crt-fg mt-2 sm:mt-4 w-full border-2 border-[var(--crt-fg)] text-[var(--crt-fg)] p-2 sm:p-3 font-raster uppercase tracking-widest font-bold hover:bg-[var(--crt-fg)] hover:text-[var(--crt-bg)] text-base sm:text-lg">
+                          [ EXECUTE & STORE ]
+                        </button>
+                     )}
                    </div>
                 </div>
+
                 <div className="flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-4">
-                  <span className="label text-[10px] sm:text-xs">SECURED FORMULAS</span>
+                  <span className="label text-[10px] sm:text-xs">SECURED FORMULAS & SCHEMATICS</span>
                   {(state.formulas || []).map(form => (
                     <div key={form.id} className="panel p-0 border-stamped bg-[var(--paper)]">
                       <div className="head bg-[var(--card)] flex-col sm:flex-row items-start sm:items-center gap-2">
@@ -1309,10 +1614,16 @@
                            <button onClick={() => dispatch({type: 'DELETE_FORMULA', payload: form.id})} className="btn-ghost !text-[var(--rust)] font-bold">✕</button>
                          </div>
                       </div>
-                      <div className="body p-3 sm:p-4 bg-[var(--paper)] border-t border-[var(--ink)]">
-                        <div className="bg-[var(--card)] p-3 sm:p-4 border border-[var(--ink)] border-dashed overflow-x-auto">
-                          <code className="text-[12px] sm:text-[14px] text-[var(--ink)] font-sans break-words block uppercase whitespace-pre-wrap">{form.code}</code>
-                        </div>
+                      <div className="body p-3 sm:p-4 bg-[var(--paper)] border-t border-[var(--ink)]" style={{"--gate-bg": "var(--paper)"}}>
+                        {form.tags === 'Gates' ? (
+                          <div className="bg-[var(--card)] border border-[var(--ink)] border-dashed w-full relative" style={{"--gate-bg": "var(--card)"}}>
+                            <LogicCircuitViewer code={form.code} />
+                          </div>
+                        ) : (
+                          <div className="bg-[var(--card)] p-3 sm:p-4 border border-[var(--ink)] border-dashed overflow-x-auto">
+                            <code className="text-[12px] sm:text-[14px] text-[var(--ink)] font-sans break-words block uppercase whitespace-pre-wrap">{form.code}</code>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1359,6 +1670,18 @@
       
       const scanlinesActive = state.settings?.scanlinesEnabled !== false;
 
+      const getAccentColor = (color) => {
+        switch(color) {
+          case 'cyan': return 'oklch(0.65 0.15 220)';
+          case 'green': return 'oklch(0.60 0.18 140)';
+          case 'magenta': return 'oklch(0.55 0.22 330)';
+          case 'orange':
+          default: return 'oklch(0.58 0.19 45)';
+        }
+      };
+      
+      const stampColor = getAccentColor(state.settings?.accentColor);
+
       if (!isLoaded) return <div className="min-h-screen bg-[var(--paper)] text-[var(--ink)] flex items-center justify-center font-sans tracking-widest uppercase text-sm sm:text-base p-4 text-center">INITIALIZING TERMINAL...</div>;
 
       return (
@@ -1373,7 +1696,7 @@
                 --card: oklch(0.94 0.035 85);
                 --ink: oklch(0.25 0.04 60);
                 --muted-fg: oklch(0.45 0.04 60);
-                --stamp: oklch(0.58 0.19 45);
+                --stamp: ${stampColor};
                 --rust: oklch(0.48 0.14 40);
                 --destructive: oklch(0.5 0.22 28);
                 --crt-bg: oklch(0.18 0.04 60);
@@ -1390,7 +1713,9 @@
                 --card: oklch(0.28 0.04 60);
                 --ink: oklch(0.91 0.04 85);
                 --muted-fg: oklch(0.70 0.04 85);
-                --stamp: oklch(0.58 0.19 45);
+                --stamp: ${stampColor};
+                --rust: oklch(0.65 0.16 40);
+                --destructive: oklch(0.65 0.22 28);
               }
 
               html, body, #root { background-color: var(--paper) !important; color: var(--ink) !important; font-family: var(--font-sans) !important; margin: 0; padding: 0; min-height: 100vh; overflow-x: hidden !important; }
@@ -1400,6 +1725,7 @@
               .font-raster { font-family: var(--font-raster); }
               .label { font: 500 12px var(--font-sans); text-transform: uppercase; letter-spacing: 0.25em; color: var(--muted-fg); margin-bottom: 8px; display: block; }
 
+              /* Cards/Panels keep their static shadow, no hover push */
               .border-stamped { border: 2px solid var(--ink) !important; box-shadow: var(--shadow-stamp) !important; border-radius: 0 !important; }
               .border-dashed { border: 2px dashed var(--ink) !important; border-radius: 0 !important; }
               
@@ -1411,6 +1737,7 @@
               .input { height: 44px; padding: 0 12px; background: var(--paper); border: 2px solid var(--ink); color: var(--ink); font: 400 14px var(--font-sans); border-radius: 0 !important; text-transform: uppercase; letter-spacing: 0.05em; }
               .input:focus { outline: none; border-color: var(--stamp); box-shadow: var(--shadow-stamp); background: var(--card); }
 
+              /* Clickable Buttons with Physical Push Effect */
               .btn-stamp { background: var(--stamp); color: oklch(0.96 0.02 85); padding: 16px 28px; font: 800 16px var(--font-display); text-transform: uppercase; letter-spacing: 0.15em; border: 2px solid var(--ink); box-shadow: var(--shadow-stamp); border-radius: 0 !important; cursor: pointer; transition: transform 100ms linear, box-shadow 100ms linear; }
               .btn-primary { background: var(--ink); color: var(--paper); padding: 10px 20px; font: 800 14px var(--font-display); text-transform: uppercase; letter-spacing: 0.15em; border: 2px solid var(--ink); box-shadow: var(--shadow-stamp); border-radius: 0 !important; cursor: pointer; transition: transform 100ms linear, box-shadow 100ms linear, background 200ms; }
               .btn-outline { background: transparent; color: var(--ink); border: 2px solid var(--ink); box-shadow: var(--shadow-stamp); padding: 10px 20px; font: 800 14px var(--font-display); text-transform: uppercase; letter-spacing: 0.15em; border-radius: 0 !important; cursor: pointer; transition: transform 100ms linear, box-shadow 100ms linear, background 200ms, color 200ms; }
@@ -1439,7 +1766,20 @@
               .btn-crt:active { transform: translate(4px, 4px); box-shadow: none; }
               .btn-crt-fg:active { transform: translate(4px, 4px); box-shadow: none; }
               .btn-ghost:active { border-bottom-color: var(--stamp); color: var(--stamp); }
-              .btn-timeline:active { transform: scale(0.98); }
+              .btn-timeline:active { transform: translateY(-50%) scale(0.98) !important; }
+
+              /* --- DARK MODE REVERSED BUTTON LOGIC --- */
+              html[data-theme="dark"] .btn-primary { background: transparent; color: var(--ink); border: 2px solid var(--ink); }
+              html[data-theme="dark"] .btn-outline { background: var(--ink); color: var(--paper); }
+              html[data-theme="dark"] .btn-stamp { background: transparent; color: var(--stamp); border-color: var(--stamp); }
+              
+              @media (hover: hover) {
+                html[data-theme="dark"] .btn-primary:hover { background: var(--stamp); color: var(--paper); border-color: var(--stamp); }
+                html[data-theme="dark"] .btn-outline:hover { background: transparent; color: var(--ink); }
+                html[data-theme="dark"] .btn-stamp:hover { background: var(--stamp); color: var(--paper); }
+              }
+              
+              html[data-theme="dark"] .btn-outline:active { background: transparent; color: var(--ink); }
 
               .tva-stamp { display: inline-block; border: 3px double var(--stamp); color: var(--stamp); text-transform: uppercase; letter-spacing: 0.18em; padding: 0.4rem 0.9rem; font-family: var(--font-display); font-weight: 800; font-size: 14px; transform: rotate(-4deg); background: transparent; }
               .kicker { font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 0.4em; color: var(--stamp); margin-bottom: 16px; }
@@ -1458,8 +1798,12 @@
               .ledger { font-family: var(--font-sans); font-size: 13px; }
               .ledger .status-warn { color: var(--stamp); }
 
+              /* Terminal Elements */
               .crt-box { position: relative; padding: 24px; border: 2px solid var(--ink); box-shadow: var(--shadow-stamp); font-family: var(--font-sans); font-size: 14px; line-height: 1.6; background: var(--crt-bg); color: var(--crt-fg); text-shadow: 0 0 6px oklch(0.78 0.2 60 / 0.7); }
               .crt-box .tag { border: 1px solid currentColor; padding: 4px 12px; display: inline-block; text-transform: uppercase; letter-spacing: 0.15em; font-size: 12px; margin-bottom: 16px; opacity: 0.7; }
+              .terminal-input { caret-color: var(--stamp); caret-shape: block; }
+              .terminal-input::-webkit-input-placeholder { color: var(--crt-fg); opacity: 0.3; }
+              .terminal-input::-moz-placeholder { color: var(--crt-fg); opacity: 0.3; }
               
               .seal { position: relative; width: 64px; height: 64px; flex-shrink: 0; color: var(--ink); }
               .seal svg { width: 100%; height: 100%; }
@@ -1471,12 +1815,14 @@
               .corner.bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; }
               .corner.br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
 
-              @keyframes blink { 50% { opacity: 0; } }
-              .blink { animation: blink 1s steps(2) infinite; }
+              @keyframes blink { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
+              .blink { animation: blink 1s step-end infinite; }
               @keyframes spin-slow { to { transform: rotate(360deg); } }
               .spin-slow { animation: spin-slow 30s linear infinite; }
               @keyframes flow { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
               .animate-flow { animation: flow 4s linear infinite; }
+              @keyframes crtFlicker { 0% { opacity: 0.95; } 5% { opacity: 0.85; } 10% { opacity: 0.95; } 100% { opacity: 0.95; } }
+              .animate-crt-flicker { animation: crtFlicker 3s infinite; }
               
               ${scanlinesActive ? `
               .scanlines::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, oklch(0 0 0 / 0.08) 0 1px, transparent 1px 3px); }
@@ -1525,8 +1871,8 @@
                         <defs>
                           <path id="circle" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
                         </defs>
-                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="3.0">
-                          <textPath href="#circle">· ENGINEERING · FOR ALL TIME · ALWAYS ·</textPath>
+                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="2.5">
+                          <textPath href="#circle">· ENGINEERING VARIANCE AUTHORITY · FOR ALL TIME · ALWAYS ·</textPath>
                         </text>
                       </svg>
                       <div className="seal-center">
@@ -1584,8 +1930,8 @@
                         <defs>
                           <path id="circle-footer" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
                         </defs>
-                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="3.0">
-                          <textPath href="#circle-footer">· ENGINEERING · FOR ALL TIME · ALWAYS ·</textPath>
+                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="2.5">
+                          <textPath href="#circle-footer">· ENGINEERING VARIANCE AUTHORITY · FOR ALL TIME · ALWAYS ·</textPath>
                         </text>
                       </svg>
                       <div className="seal-center absolute inset-0 flex items-center justify-center">
@@ -1593,9 +1939,9 @@
                       </div>
                     </div>
                     <div className="mt-6 font-display font-black text-3xl uppercase tracking-widest text-[var(--paper)] leading-none">
-                      ENGINEERING VARIANCE AUTHORITY
+                      ASCEND MATRIX
                     </div>
-                    <div className="text-[11.25px] font-sans uppercase tracking-[0.2em] opacity-60 mt-3 leading-relaxed">
+                    <div className="text-[10px] font-sans uppercase tracking-[0.2em] opacity-60 mt-3 leading-relaxed">
                       DEPARTMENT OF TEMPORAL ENGINEERING<br/>
                       AUTHORIZED PERSONNEL ONLY
                     </div>
