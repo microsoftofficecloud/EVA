@@ -599,7 +599,7 @@
                 return (
                   <div key={incident.id} className="panel bg-[var(--paper)] relative overflow-hidden">
                     {isPruned && (
-                      <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-20">
+                      <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none opacity-20">
                          <div className="tva-stamp !text-[4rem] sm:!text-[6rem] !border-[6px] sm:!border-[8px] rotate-[-15deg] !text-[var(--destructive)] !border-[var(--destructive)]">PRUNED</div>
                       </div>
                     )}
@@ -1080,7 +1080,7 @@
                    const y = startY + idx * 20;
                    return (
                      <g key={idx}>
-                       <text x="20" y={y+5} fill={gateColor} className="text-[16px] font-black">{inp}</text>
+                       <text x="20" y={y+5} fill={gateColor} className="text-[16px] font-black" style={{ textShadow: '0 0 8px currentColor' }}>{inp}</text>
                        <line x1="35" y1={y} x2="102" y2={y} stroke={gateColor} strokeWidth="2.5" />
                      </g>
                    )
@@ -1089,7 +1089,7 @@
                 {SVG_GATES[op](90, 64)}
                 {/* 3. Output Line */}
                 <line x1={finalOutX} y1="64" x2="160" y2="64" stroke={gateColor} strokeWidth="2.5" />
-                <text x="170" y="68" fill={gateColor} className="text-[16px] font-bold">F</text>
+                <text x="170" y="68" fill={gateColor} className="text-[16px] font-bold" style={{ textShadow: '0 0 8px currentColor' }}>F</text>
               </svg>
             </div>
           );
@@ -1129,15 +1129,20 @@
                   const x = startX + i * busSpacing;
                   return (
                      <g key={`bus-${v}`}>
-                       <text x={x} y={20} fill="var(--stamp)" className="font-black text-[16px]" textAnchor="middle">{v}</text>
-                       <line x1={x} y1={25} x2={x} y2={totalHeight-15} stroke="var(--stamp)" strokeWidth="2.5" className="opacity-40" />
+                       <text x={x} y={20} fill="var(--stamp)" className="font-black text-[16px]" textAnchor="middle" style={{ textShadow: '0 0 8px currentColor' }}>{v}</text>
+                       <line x1={x} y1={25} x2={x} y2={totalHeight-15} stroke="var(--ink)" strokeWidth="2.5" className="opacity-40" />
                      </g>
                   );
                })}
 
                {parsedTerms.map((factors, termIdx) => {
                   const y = 50 + termIdx * termSpacing;
-                  const orInY = parsedTerms.length > 1 ? (orCenterY + (termIdx - (parsedTerms.length - 1) / 2) * (20 / Math.max(1, parsedTerms.length - 1))) : y;
+                  const spread = Math.min(24, (parsedTerms.length - 1) * 8); 
+                  const orInY = parsedTerms.length > 1 ? (orCenterY + (termIdx - (parsedTerms.length - 1) / 2) * (spread / Math.max(1, parsedTerms.length - 1))) : y;
+                  
+                  const midIdx = (parsedTerms.length - 1) / 2;
+                  const distFromCenter = Math.abs(termIdx - midIdx);
+                  const dropX = orX - 16 - distFromCenter * 8;
                   
                   return (
                     <g key={`wiring-${termIdx}`}>
@@ -1162,7 +1167,7 @@
                       
                       {/* AND to OR connection */}
                       {parsedTerms.length > 1 && factors.length > 1 && (
-                         <path d={`M ${andX+30} ${y} L ${orX-15} ${y} L ${orX-15} ${orInY} L ${orX+12} ${orInY}`} fill="none" stroke="var(--rust)" strokeWidth="2.5" strokeLinejoin="round" />
+                         <path d={`M ${andX+30} ${y} L ${dropX} ${y} L ${dropX} ${orInY} L ${orX+8} ${orInY}`} fill="none" stroke="var(--rust)" strokeWidth="2.5" strokeLinejoin="round" />
                       )}
                     </g>
                   )
@@ -1183,19 +1188,19 @@
                {parsedTerms.length > 1 && (
                  <g>
                    <line x1={orX+30} y1={orCenterY} x2={orX+55} y2={orCenterY} stroke="var(--rust)" strokeWidth="2.5" />
-                   <text x={orX+65} y={orCenterY + 5} fill="var(--rust)" className="font-bold text-[16px]">F</text>
+                   <text x={orX+65} y={orCenterY + 5} fill="var(--rust)" className="font-bold text-[16px]" style={{ textShadow: '0 0 8px currentColor' }}>F</text>
                  </g>
                )}
                {parsedTerms.length === 1 && parsedTerms[0].length > 1 && (
                  <g>
                    <line x1={andX+30} y1={50} x2={andX+55} y2={50} stroke="var(--stamp)" strokeWidth="2.5" />
-                   <text x={andX+65} y={55} fill="var(--stamp)" className="font-bold text-[16px]">F</text>
+                   <text x={andX+65} y={55} fill="var(--stamp)" className="font-bold text-[16px]" style={{ textShadow: '0 0 8px currentColor' }}>F</text>
                  </g>
                )}
                {parsedTerms.length === 1 && parsedTerms[0].length === 1 && (
                  <g>
                    <line x1={andX+12} y1={50} x2={andX+35} y2={50} stroke="var(--stamp)" strokeWidth="2.5" />
-                   <text x={andX+45} y={55} fill="var(--stamp)" className="font-bold text-[16px]">F</text>
+                   <text x={andX+45} y={55} fill="var(--stamp)" className="font-bold text-[16px]" style={{ textShadow: '0 0 8px currentColor' }}>F</text>
                  </g>
                )}
             </svg>
@@ -1403,15 +1408,15 @@
         <div className="flex flex-col h-full bg-[var(--paper)] border-2 border-[var(--ink)] relative shadow-[4px_4px_0_0_var(--ink)]">
           <div className="section-head sticky top-0 z-10 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
             <div>
-              <div className="label">§VI</div>
+              <div className="label">§III</div>
               <h2 className="text-3xl sm:text-4xl">CONSOLE</h2>
             </div>
           </div>
 
           <div className="flex border-b-2 border-[var(--ink)] shrink-0">
-            <button onClick={() => setActiveTab('inventory')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'inventory' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] border-r-2 border-[var(--ink)] hover:bg-[var(--paper)]'}`}>HARDWARE</button>
-            <button onClick={() => setActiveTab('logic')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'logic' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] border-r-2 border-[var(--ink)] hover:bg-[var(--paper)]'}`}>LOGIC</button>
-            <button onClick={() => setActiveTab('formulas')} className={`flex-1 py-2 sm:py-3 px-1 sm:px-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'formulas' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>SYNTHESIS</button>
+            <button onClick={() => setActiveTab('inventory')} className={`flex-1 py-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors border-r-2 border-[var(--ink)] ${activeTab === 'inventory' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>HARDWARE</button>
+            <button onClick={() => setActiveTab('logic')} className={`flex-1 py-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors border-r-2 border-[var(--ink)] ${activeTab === 'logic' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>LOGIC</button>
+            <button onClick={() => setActiveTab('formulas')} className={`flex-1 py-3 font-sans text-[10px] sm:text-[12px] uppercase tracking-wide sm:tracking-widest font-bold transition-colors ${activeTab === 'formulas' ? 'bg-[var(--ink)] text-[var(--paper)]' : 'bg-[var(--card)] text-[var(--ink)] hover:bg-[var(--paper)]'}`}>SYNTHESIS</button>
           </div>
 
           <div className="flex flex-col p-2 sm:p-4 overflow-y-auto custom-scrollbar min-h-[300px]">
@@ -1570,7 +1575,7 @@
 
                      <div>
                        <label className="text-[10px] sm:text-[12px] uppercase tracking-widest opacity-80 block mb-1 font-raster text-[var(--stamp)]">&gt; INPUT DESIGNATION_</label>
-                       <input type="text" placeholder="E.G. QUADRATIC_FORMULA" className="terminal-input w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-dashed border-[var(--crt-fg)] p-2 focus:outline-none focus:border-solid focus:border-[var(--stamp)] font-raster uppercase text-base sm:text-lg placeholder:opacity-30" value={newFormula.title || ''} onChange={(e) => setNewFormula({...newFormula, title: e.target.value})} disabled={isCompiling} />
+                       <input type="text" placeholder="E.G. ADDER_CARRY" className="terminal-input w-full bg-transparent text-[var(--crt-fg)] border-b-2 border-dashed border-[var(--crt-fg)] p-2 focus:outline-none focus:border-solid focus:border-[var(--stamp)] font-raster uppercase text-base sm:text-lg placeholder:opacity-30" value={newFormula.title || ''} onChange={(e) => setNewFormula({...newFormula, title: e.target.value})} disabled={isCompiling} />
                      </div>
                      <div>
                        <label className="text-[10px] sm:text-[12px] uppercase tracking-widest opacity-80 block mb-1 font-raster text-[var(--stamp)]">&gt; INPUT SOURCE_CODE_</label>
