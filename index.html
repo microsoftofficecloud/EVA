@@ -148,7 +148,7 @@
           <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-[calc(100vw-2rem)]">
             {toasts.map(t => (
               <div key={t.id} className="panel border-stamped p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-right-5 bg-[var(--card)] pointer-events-auto" style={{ minWidth: 'min(320px, 100%)' }}>
-                <div className={`status-dot shrink-0 ${t.type === 'warning' || t.type === 'success' ? 'blink' : ''}`} style={{ background: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}></div>
+                <div className={`status-dot shrink-0 ${t.type === 'warning' || t.type === 'success' ? 'animate-pulse' : ''}`} style={{ background: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}></div>
                 <span className="label !mb-0 text-[10px] sm:text-sm tracking-widest leading-tight" style={{ color: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}>
                   {t.type === 'warning' ? '⚠ WARNING' : t.type === 'success' ? '✓ LOGGED' : '◆ NOTICE'}: {t.message}
                 </span>
@@ -348,181 +348,207 @@
     // ----------------------------------------------------
     const TemporalLoom = () => {
       const { state, dispatch } = useContext(MatrixContext);
+      const [phase, setPhase] = useState(0);
+
+      // Animation loop to make the timeline breathe and flow organically
+      useEffect(() => {
+        let frameId;
+        const tick = (time) => {
+          setPhase(time / 1000); // Perfect speed for a smooth flowing wave
+          frameId = requestAnimationFrame(tick);
+        };
+        frameId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frameId);
+      }, []);
       
-      const timelineNodes = [];
-      const deadlines = [...new Set((state.syllabus || []).filter(s => s.deadline).map(s => s.deadline))].sort();
+      const allTasks = state.tasks || [];
+      const totalWidth = Math.max(1200, allTasks.length * 180 + 300);
 
-      deadlines.forEach(date => {
-        const coursesDue = (state.syllabus || []).filter(s => s.deadline === date);
-        let highComplexityTasks = 0;
-        let totalLoad = 0;
+      const TIMELINE_Y = 200;
 
-        const coursesWithTasks = coursesDue.map(course => {
-          const linked = (state.tasks || []).filter(t => t.syllabusId === course.id);
-          totalLoad += linked.reduce((sum, t) => sum + t.weight, 0);
-          highComplexityTasks += linked.filter(t => t.weight >= 8).length;
-          return { ...course, linkedTasks: linked };
-        });
+      // Clean, pronounced traveling sine wave for a majestic "living" timeline
+      const getWaveY = (x, p, offset = 0) => {
+         // Primary traveling wave: clearly visible crests and troughs moving forward
+         const primary = Math.sin((x / 150) - (p * 2.5) + offset) * 28;
+         // Secondary macro wave: gently undulates the entire timeline up and down
+         const secondary = Math.sin((x / 400) - (p * 0.8)) * 15;
+         
+         return TIMELINE_Y + primary + secondary;
+      };
 
-        const isCollision = highComplexityTasks >= 3;
-        timelineNodes.push({ date, courses: coursesWithTasks, highComplexityTasks, totalLoad, isCollision });
-      });
+      let sacredPath = '';
+      
+      for (let x = 0; x <= totalWidth; x += 10) { // High resolution for smooth curves
+          const yMain = getWaveY(x, phase, 0);
 
-      const TIMELINE_Y = 250;
-      const NODE_SPACING = 340;
-
-      const nodesLayout = timelineNodes.map((node, i) => {
-        const x = 160 + i * NODE_SPACING;
-        const y = TIMELINE_Y + (i % 2 === 0 ? -30 : 30);
-        
-        const allTasks = [];
-        node.courses.forEach(c => allTasks.push(...c.linkedTasks));
-        
-        const tasksWithPos = allTasks.map((t, idx) => {
-           const isUp = idx % 2 === 0;
-           const k = Math.floor(idx / 2);
-           const taskX = x + 35 + (k * 20);
-           const taskY = isUp ? y - 70 - (k * 42) : y + 70 + (k * 42);
-           return { ...t, x: taskX, y: taskY, isUp };
-        });
-        
-        return { ...node, x, y, tasksWithPos };
-      });
-
-      let sacredPath = `M 0 ${TIMELINE_Y}`;
-      if (nodesLayout.length > 0) {
-         const first = nodesLayout[0];
-         sacredPath += ` C ${first.x / 2} ${TIMELINE_Y}, ${first.x / 2} ${first.y}, ${first.x} ${first.y}`;
-         for (let i = 0; i < nodesLayout.length - 1; i++) {
-            const curr = nodesLayout[i];
-            const next = nodesLayout[i+1];
-            const midX = (curr.x + next.x) / 2;
-            sacredPath += ` C ${midX} ${curr.y}, ${midX} ${next.y}, ${next.x} ${next.y}`;
-         }
-         const last = nodesLayout[nodesLayout.length - 1];
-         sacredPath += ` C ${last.x + 100} ${last.y}, ${last.x + 100} ${TIMELINE_Y}, ${last.x + 400} ${TIMELINE_Y}`;
+          if (x === 0) {
+            sacredPath += `M ${x} ${yMain}`;
+          } else {
+            sacredPath += ` L ${x} ${yMain}`;
+          }
       }
+      
+      const branches = allTasks.map((t, i) => {
+        const xStart = 150 + (i * 180);
+        const yStart = getWaveY(xStart, phase, 0); // Perfect attachment to the living wave
 
-      const totalWidth = Math.max(1200, (nodesLayout.length * NODE_SPACING) + 400);
+        const isUp = i % 2 === 0;
+        const dir = isUp ? -1 : 1;
+        
+        // Predictable pseudo-randoms based on task ID to keep curves stable
+        const seed = t.id * 17;
+        const rLength = seed % 60;
+        const rHeight = (seed * 7) % 50;
+
+        // Smooth flowing endpoint
+        const endX = xStart + 120 + rLength;
+        const endY = TIMELINE_Y + dir * (90 + rHeight); 
+        
+        // Swaying control points for underwater/organic kelp-like movement
+        const swayX = Math.sin(phase * 1.5 + t.id) * 18;
+        const swayY = Math.cos(phase * 1.2 + t.id) * 15;
+
+        const cp1x = xStart + (endX - xStart) * 0.4 + swayX;
+        const cp1y = yStart + swayY; 
+        
+        const cp2x = endX - (endX - xStart) * 0.2 - swayX;
+        const cp2y = endY - dir * 20 + swayY; // Approach the end more smoothly
+
+        const path = `M ${xStart} ${yStart} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+        
+        return { id: t.id, path, endX, endY, isDone: t.status === 'done', title: t.title };
+      });
+
+      const locs = ['Phong Nha, Vietnam', 'Lisbon, Portugal', 'Vormir', 'Thorton, USA', 'Cookeville, USA', 'Asgard', 'TVA Headquarters', 'The Citadel at the End of Time'];
 
       return (
-        <div className="flex flex-col bg-[var(--paper)] border-2 border-[var(--ink)] relative w-full h-[520px] overflow-hidden shadow-[4px_4px_0_0_var(--ink)]">
+        <div className="flex flex-col bg-[var(--paper)] border-2 border-[var(--ink)] relative w-full h-[850px] shadow-[4px_4px_0_0_var(--ink)]">
+          
           <div className="section-head sticky top-0 z-30 bg-[var(--paper)] pt-4 px-4 border-b-2 border-[var(--ink)] shrink-0">
             <div>
               <div className="label">§IV</div>
               <h2 className="text-3xl sm:text-4xl">TEMPORAL LOOM</h2>
             </div>
-            <span className="label !mb-0 text-[10px] text-[var(--stamp)] animate-pulse hidden sm:block">◆ MONITORING TIMELINE BRANCHES</span>
-          </div>
-          
-          <div className="flex-1 relative overflow-x-auto overflow-y-hidden custom-scrollbar bg-[var(--crt-bg)]" style={{ scrollBehavior: 'smooth' }}>
-            <svg className="absolute top-0 left-0 pointer-events-none z-0" style={{ width: totalWidth, height: '100%' }}>
-               <defs>
-                 <filter id="loom-glow" x="-20%" y="-20%" width="140%" height="140%">
-                   <feGaussianBlur stdDeviation="4" result="blur" />
-                   <feMerge>
-                     <feMergeNode in="blur"/>
-                     <feMergeNode in="SourceGraphic"/>
-                   </feMerge>
-                 </filter>
-                 <filter id="branch-glow" x="-20%" y="-20%" width="140%" height="140%">
-                   <feGaussianBlur stdDeviation="2" result="blur" />
-                   <feMerge>
-                     <feMergeNode in="blur"/>
-                     <feMergeNode in="SourceGraphic"/>
-                   </feMerge>
-                 </filter>
-                 <filter id="nexus-glow" x="-20%" y="-20%" width="140%" height="140%">
-                   <feGaussianBlur stdDeviation="6" result="blur" />
-                   <feComponentTransfer in="blur" result="glow1">
-                      <feFuncA type="linear" slope="3"/>
-                   </feComponentTransfer>
-                   <feMerge>
-                     <feMergeNode in="glow1"/>
-                     <feMergeNode in="SourceGraphic"/>
-                   </feMerge>
-                 </filter>
-               </defs>
-
-               <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                 <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--paper)" strokeWidth="0.5" opacity="0.05" />
-               </pattern>
-               <rect width="100%" height="100%" fill="url(#grid)" />
-
-               <path d={sacredPath} fill="none" stroke="var(--paper)" strokeWidth="12" opacity="0.15" filter="url(#loom-glow)" />
-               <path d={sacredPath} fill="none" stroke="var(--paper)" strokeWidth="2" strokeDasharray="12 12" className="animate-flow" />
-
-               {nodesLayout.map(n => n.tasksWithPos.map(t => {
-                 const isDone = t.status === 'done';
-                 const color = isDone ? 'var(--muted-fg)' : 'var(--stamp)';
-                 const opacity = isDone ? '0.3' : '0.9';
-                 const strokeWidth = isDone ? "2" : "3";
-                 return (
-                   <path 
-                     key={t.id} 
-                     d={`M ${n.x} ${n.y} C ${n.x + 20} ${n.y}, ${t.x - 20} ${t.y}, ${t.x} ${t.y}`} 
-                     fill="none" 
-                     stroke={color} 
-                     strokeWidth={strokeWidth} 
-                     opacity={opacity}
-                     strokeDasharray={isDone ? "6 6" : "none"}
-                     filter={!isDone ? "url(#branch-glow)" : "none"}
-                   />
-                 );
-               }))}
-
-               {nodesLayout.filter(n => n.isCollision).map((n, i) => (
-                 <g key={i}>
-                   <path d={`M ${n.x} ${n.y} Q ${n.x - 50} ${n.y - 100}, ${n.x + 30} ${n.y - 180}`} fill="none" stroke="var(--destructive)" strokeWidth="4" filter="url(#nexus-glow)" opacity="0.8" strokeDasharray="15 10" className="blink" />
-                   <path d={`M ${n.x} ${n.y} Q ${n.x + 80} ${n.y + 90}, ${n.x - 20} ${n.y + 160}`} fill="none" stroke="var(--destructive)" strokeWidth="3" filter="url(#nexus-glow)" opacity="0.6" strokeDasharray="10 8" className="blink" />
-                   <circle cx={n.x} cy={n.y} r="18" fill="transparent" stroke="var(--destructive)" strokeWidth="2" filter="url(#nexus-glow)" className="blink" />
-                 </g>
-               ))}
-            </svg>
-
-            <div className="absolute top-0 left-0 h-full pointer-events-auto z-10" style={{ width: totalWidth }}>
-               {nodesLayout.length === 0 && (
-                  <div className="flex h-full w-full items-center justify-center text-[var(--crt-fg)] opacity-50 uppercase tracking-widest font-sans px-4 text-center">
-                     [ TIMELINE SECURE. NO DEADLINES ANCHORED. ]
-                  </div>
-               )}
-               {nodesLayout.map(n => (
-                  <React.Fragment key={n.date}>
-                     <div className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20" style={{ left: n.x, top: n.y }}>
-                        <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full border-[3px] flex items-center justify-center m-auto ${n.isCollision ? 'border-[var(--destructive)] bg-[var(--crt-bg)] shadow-[0_0_20px_var(--destructive)] blink' : 'border-[var(--paper)] bg-[var(--ink)] shadow-[0_0_15px_rgba(255,255,255,0.2)]'}`}>
-                          <div className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${n.isCollision ? 'bg-[var(--destructive)]' : 'bg-[var(--paper)]'}`}></div>
-                        </div>
-                        
-                        <div className="absolute top-10 sm:top-12 left-1/2 transform -translate-x-1/2 bg-[var(--card)] border border-[var(--ink)] py-1 px-2 sm:px-3 whitespace-nowrap flex flex-col items-center z-30 shadow-[2px_2px_0_0_var(--ink)]">
-                           <span className={`font-bold text-[11px] sm:text-[13px] uppercase ${n.isCollision ? 'text-[var(--destructive)]' : 'text-[var(--ink)]'}`}>{n.date}</span>
-                           <span className="text-[8px] sm:text-[9px] uppercase tracking-widest opacity-80">{n.courses.map(c=>c.course).join(' + ')}</span>
-                        </div>
-                     </div>
-
-                     {n.tasksWithPos.map(t => {
-                        const isDone = t.status === 'done';
-                        return (
-                          <div 
-                            key={t.id} 
-                            className={`btn-timeline absolute transform -translate-y-1/2 flex flex-col justify-center transition-all border-l-[3px] p-2 z-30 ${isDone ? 'bg-[var(--crt-bg)] border-[var(--muted-fg)] opacity-60' : 'bg-[var(--card)] border-[var(--stamp)] shadow-[2px_2px_0_0_rgba(0,0,0,0.5)] sm:shadow-[4px_4px_0_0_rgba(0,0,0,0.5)]'}`} 
-                            style={{ left: t.x + 5, top: t.y, width: '160px' }}
-                            onClick={() => dispatch({ type: 'TOGGLE_TASK_STATUS', payload: t.id })}
-                          >
-                             <div className="flex justify-between items-start mb-1">
-                               <span className={`text-[12px] sm:text-[13px] font-bold shrink-0 ${isDone ? 'text-[var(--muted-fg)]' : 'text-[var(--stamp)]'}`}>
-                                 {isDone ? '[✕]' : '[ ]'}
-                               </span>
-                               <span className="text-[8px] sm:text-[9px] border border-current px-1 font-bold">W:{t.weight}</span>
-                             </div>
-                             <span className={`text-[10px] sm:text-[11px] uppercase font-bold tracking-wider leading-snug line-clamp-2 ${isDone ? 'line-through text-[var(--muted-fg)]' : 'text-[var(--ink)]'}`} title={t.title}>
-                               {t.title}
-                             </span>
-                          </div>
-                        );
-                     })}
-                  </React.Fragment>
-               ))}
+            <div className="flex flex-col items-end">
+              <span className="label !mb-0 text-[10px] text-[var(--stamp)] animate-pulse hidden sm:block font-bold tracking-[0.3em]">◆ SACRED TIMELINE MONITOR</span>
+              <span className="text-[var(--destructive)] text-[9px] uppercase tracking-widest font-bold mt-1">AVOID REDLINE PROXIMITY</span>
             </div>
+          </div>
+
+          <div className="flex-1 flex flex-col relative overflow-hidden bg-[#050505] font-sans" style={{ boxShadow: 'inset 0 0 50px rgba(204,0,0,0.4)' }}>
+             {/* CRT Scanline Overlay specifically for this container */}
+             <div className="absolute inset-0 pointer-events-none z-50 mix-blend-overlay opacity-30" style={{ background: 'repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px)' }}></div>
+             
+             {/* 1. Upper Section - Waveform / Signal Graph */}
+             <div className="relative h-[400px] border-b-[3px] border-[#ff6600] shrink-0 bg-[#050505] overflow-x-auto custom-scrollbar overflow-y-hidden" style={{boxShadow: 'inset 0 -10px 20px rgba(255,102,0,0.1)'}}>
+                
+                {/* Red Glow Bars */}
+                <div className="absolute top-0 left-0 w-full h-12 bg-[#cc0000]/40 blur-[15px] pointer-events-none"></div>
+                <div className="absolute bottom-0 left-0 w-full h-12 bg-[#cc0000]/40 blur-[15px] pointer-events-none"></div>
+
+                <svg width={totalWidth} height="400" className="block min-w-full">
+                  <defs>
+                    <filter id="neon-orange" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur stdDeviation="3" result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                    <filter id="neon-white" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                    <pattern id="vert-grid" width="80" height="400" patternUnits="userSpaceOnUse">
+                      <line x1="0" y1="0" x2="0" y2="400" stroke="rgba(255,102,0,0.08)" strokeWidth="1" />
+                    </pattern>
+                  </defs>
+
+                  <rect width="100%" height="100%" fill="url(#vert-grid)" />
+
+                  {/* Organic Anomaly Branches (Rendered behind the white line) */}
+                  {branches.map(b => (
+                     <g key={b.id}>
+                       <path d={b.path} fill="none" stroke="#ff6600" strokeWidth="3" filter="url(#neon-orange)" strokeDasharray={b.isDone ? "5 5" : "none"} opacity={b.isDone ? 0.4 : 1} />
+                       <circle cx={b.endX} cy={b.endY} r="4" fill="#ff6600" filter="url(#neon-orange)" opacity={b.isDone ? 0.4 : 1} />
+                       {/* Branch Label */}
+                       <text x={b.endX + 10} y={b.endY + 4} fill="#ff6600" fontSize="11" fontFamily="monospace" letterSpacing="0.1em" opacity={b.isDone ? 0.4 : 0.9} style={{textShadow: '0 0 5px #ff6600'}}>{b.title.substring(0, 20).toUpperCase()}</text>
+                     </g>
+                  ))}
+
+                  {/* The Sacred Timeline (Rendered on top) */}
+                  <path d={sacredPath} fill="none" stroke="#ffffff" strokeWidth="6" opacity="0.8" filter="url(#neon-white)" />
+                  <path d={sacredPath} fill="none" stroke="#ffffff" strokeWidth="2" />
+
+                </svg>
+             </div>
+
+             {/* 2. Lower Section - Event Log Table */}
+             <div className="flex-1 overflow-auto bg-[#050505] p-0 text-[#ff6600] font-sans relative z-10 custom-scrollbar">
+               <table className="w-full text-left border-collapse text-[12px] sm:text-[14px]">
+                 <thead className="sticky top-0 bg-[#0a0a0a] z-20 border-b-2 border-[#ff6600] shadow-[0_5px_15px_rgba(0,0,0,0.8)]">
+                   <tr>
+                     <th className="py-3 px-6 font-bold tracking-[0.25em] whitespace-nowrap" style={{textShadow: '0 0 8px #ff6600'}}>EVENT</th>
+                     <th className="py-3 px-6 font-bold tracking-[0.25em] whitespace-nowrap" style={{textShadow: '0 0 8px #ff6600'}}>DATE</th>
+                     <th className="py-3 px-6 font-bold tracking-[0.25em] whitespace-nowrap" style={{textShadow: '0 0 8px #ff6600'}}>TIME</th>
+                     <th className="py-3 px-6 font-bold tracking-[0.25em] whitespace-nowrap" style={{textShadow: '0 0 8px #ff6600'}}>LOCATION</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {allTasks.map((t, idx) => {
+                      const eventId = `#${(t.id * 12345).toString().substring(0,8).padStart(8, '0')}:${(t.id%1000).toString().padStart(3,'0')}`;
+                      
+                      let dateStr = "";
+                      if (t.syllabusId) {
+                          const course = state.syllabus?.find(s => s.id === t.syllabusId);
+                          if (course && course.deadline) dateStr = course.deadline.replace(/-/g, '.');
+                      }
+                      if (!dateStr) {
+                          dateStr = `-${(10 + t.id%12).toString().padStart(2,'0')}.${(1+t.id%28).toString().padStart(2,'0')}.${1400 + (t.id * 7)%500}`;
+                      }
+                      
+                      const hr = (t.id % 24).toString().padStart(2,'0');
+                      const min = ((t.id * 13) % 60).toString().padStart(2,'0');
+                      const sec = ((t.id * 7) % 60).toString().padStart(2,'0');
+                      const timeStr = `${hr}:${min}:${sec}`;
+                      
+                      const locationStr = t.epic ? t.epic.toUpperCase() : locs[t.id % locs.length].toUpperCase();
+
+                      return (
+                          <tr key={t.id} className={`border-b border-[#ff6600]/20 hover:bg-[#ff6600]/15 transition-colors cursor-default ${idx % 2 === 0 ? 'bg-[#ff6600]/5' : ''}`}>
+                              <td className="py-3 px-6 font-mono tracking-widest opacity-90">{eventId}</td>
+                              <td className="py-3 px-6 font-mono tracking-widest opacity-90">{dateStr}</td>
+                              <td className="py-3 px-6 font-mono tracking-widest opacity-90">{timeStr}</td>
+                              <td className="py-3 px-6 font-mono tracking-widest opacity-90 truncate max-w-[200px]" title={locationStr}>{locationStr}</td>
+                          </tr>
+                      )
+                   })}
+                   {allTasks.length === 0 && (
+                     <tr>
+                       <td colSpan="4" className="text-center py-10 opacity-50 tracking-[0.3em] uppercase">No temporal events logged.</td>
+                     </tr>
+                   )}
+                 </tbody>
+               </table>
+             </div>
+
+             {/* 3. Bottom UI Bar */}
+             <div className="h-12 border-t-[3px] border-[#ff6600] bg-[#1a0a00] flex items-center justify-between px-6 text-[#ff6600] font-sans font-bold text-[12px] sm:text-[14px] shrink-0 z-20">
+               <div className="flex items-center gap-2">
+                  <span className="text-2xl tracking-tighter" style={{ textShadow: '0 0 10px #ff6600' }}>TM</span>
+               </div>
+               <div className="flex gap-6 sm:gap-10 tracking-[0.2em]">
+                  <span className="cursor-pointer hover:text-white transition-colors hover:drop-shadow-[0_0_5px_#fff]">FILE</span>
+                  <span className="cursor-pointer hover:text-white transition-colors hover:drop-shadow-[0_0_5px_#fff]">EDIT</span>
+                  <span className="cursor-pointer hover:text-white transition-colors hover:drop-shadow-[0_0_5px_#fff]">VIEW</span>
+                  <span className="cursor-pointer hover:text-white transition-colors hover:drop-shadow-[0_0_5px_#fff]">MODE</span>
+                  <span className="cursor-pointer hover:text-white transition-colors hover:drop-shadow-[0_0_5px_#fff]">HELP</span>
+               </div>
+             </div>
+
           </div>
         </div>
       );
@@ -746,7 +772,7 @@
                     <span className="code font-bold text-[13px] sm:text-[14px]">{item.course}</span>
                     <div className="flex items-center justify-between w-full sm:w-auto gap-4">
                       {item.deadline && (
-                        <span className={`label !mb-0 font-bold ${isOverdue ? 'text-[var(--destructive)] blink' : ''}`}>
+                        <span className={`label !mb-0 font-bold ${isOverdue ? 'text-[var(--destructive)] animate-pulse' : ''}`}>
                           {daysLeft !== null ? (isOverdue ? `⚠ OVERDUE ${Math.abs(daysLeft)}D` : `T-${daysLeft}D`) : item.deadline}
                         </span>
                       )}
@@ -818,10 +844,9 @@
       const [timerActive, setTimerActive] = useState(false);
 
       useEffect(() => {
-        if (!timerActive) {
-          setTimerLeft((state.settings?.focusDuration || 25) * 60);
-        }
-      }, [state.settings?.focusDuration, timerActive]);
+        setTimerLeft((state.settings?.focusDuration || 25) * 60);
+        setTimerActive(false);
+      }, [state.settings?.focusDuration]);
 
       useEffect(() => {
         let interval = null;
@@ -915,7 +940,7 @@
           <div className="bg-[var(--crt-bg)] border-b-2 border-[var(--ink)] p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-between shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
             <div className="flex flex-col items-center sm:items-start">
               <span className="label !text-[var(--stamp)] opacity-70 flex items-center gap-2 text-[10px] sm:text-xs">
-                 <div className={`w-2 h-2 rounded-full ${timerActive ? 'bg-[var(--stamp)] blink' : 'bg-gray-600'}`}></div>
+                 <div className={`w-2 h-2 rounded-full ${timerActive ? 'bg-[var(--stamp)] animate-pulse' : 'bg-gray-600'}`}></div>
                  CHRONO-MONITOR
               </span>
               <span className="font-raster text-5xl sm:text-6xl md:text-7xl leading-none" style={{ color: 'var(--stamp)', textShadow: timerActive ? '0 0 15px var(--stamp)' : 'none' }}>
@@ -924,7 +949,7 @@
             </div>
             <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
                <button onClick={() => setTimerActive(!timerActive)} className={`btn-crt border-2 border-[var(--stamp)] px-3 sm:px-4 py-2 font-display text-base sm:text-lg uppercase tracking-wide sm:tracking-widest font-bold w-full sm:w-auto ${timerActive ? 'bg-[var(--stamp)] text-[var(--crt-bg)]' : 'text-[var(--stamp)]'}`}>
-                 {timerActive ? '[ PAUSE TIMELINE ]' : '[ AUTHORIZE FOCUS ]'}
+                 {timerActive ? '[ PAUSE TIMELINE ]' : (timerLeft < focusDurationMins * 60 && timerLeft > 0 ? '[ RESUME TIMELINE ]' : '[ AUTHORIZE FOCUS ]')}
                </button>
                <button onClick={() => { setTimerActive(false); setTimerLeft((state.settings?.focusDuration || 25) * 60); }} className="text-[var(--stamp)] opacity-60 hover:opacity-100 font-sans text-[10px] sm:text-xs uppercase tracking-widest text-center sm:text-right transition-opacity cursor-pointer border-none bg-transparent">
                  [ RESET TIMELINE ]
@@ -949,7 +974,7 @@
             <div className="p-3 sm:p-4 border-b border-[var(--ink)] border-dashed bg-[var(--card)] shrink-0">
               <div className="flex justify-between items-end mb-2 sm:mb-3">
                 <span className="label !mb-0 flex items-center text-[10px] sm:text-xs">
-                  <span className={`status-dot blink shrink-0 mr-2 sm:mr-3 ${isOverloaded ? 'bg-[var(--destructive)]' : ''}`}></span> COGNITIVE LOAD
+                  <span className={`status-dot animate-pulse shrink-0 mr-2 sm:mr-3 ${isOverloaded ? 'bg-[var(--destructive)]' : ''}`}></span> COGNITIVE LOAD
                 </span>
                 <span className={`font-display text-2xl sm:text-3xl font-black ${isOverloaded ? 'text-[var(--destructive)]' : 'text-[var(--ink)]'}`}>{currentLoad} / {MAX_DAILY_LOAD}</span>
               </div>
@@ -1545,7 +1570,7 @@
                 <div className="crt-box scanlines !p-4 sm:!p-6 animate-crt-flicker">
                    <div className="flex items-center gap-2 mb-4 sm:mb-6 text-lg sm:text-xl font-raster text-[var(--stamp)]">
                       <span>root@eva-sys:~/compiler$</span>
-                      {!isCompiling && <span className="w-2.5 h-4 sm:w-3 sm:h-5 bg-[var(--stamp)] animate-[blink_1s_step-end_infinite] vertical-text-bottom"></span>}
+                      {!isCompiling && <span className="w-2.5 h-4 sm:w-3 sm:h-5 bg-[var(--stamp)] cursor-blink vertical-text-bottom"></span>}
                    </div>
                    
                    <div className="flex flex-col gap-4 sm:gap-5">
@@ -1597,7 +1622,7 @@
                         <div className="flex flex-col gap-1 mt-4 text-[var(--stamp)] font-raster text-base sm:text-lg">
                           {terminalLogs.map((log, i) => <div key={i}>{log}</div>)}
                           <div className="flex items-center">
-                            <span className="w-2.5 h-4 sm:w-3 sm:h-5 bg-[var(--stamp)] animate-[blink_1s_step-end_infinite] vertical-text-bottom"></span>
+                            <span className="w-2.5 h-4 sm:w-3 sm:h-5 bg-[var(--stamp)] cursor-blink vertical-text-bottom"></span>
                           </div>
                         </div>
                      ) : (
@@ -1795,7 +1820,6 @@
               .topbar { font-size: 11px; font-family: var(--font-sans); letter-spacing: 0.15em; background: var(--ink); color: var(--paper); }
               .topbar .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 16px; }
               @media (min-width: 640px) { .topbar .row { padding: 6px 24px; } }
-              .status-dot { width: 8px; height: 8px; background: var(--stamp); display: inline-block; }
 
               .table th { font: 500 11px var(--font-sans); text-transform: uppercase; letter-spacing: 0.25em; color: var(--muted-fg); border-bottom: 1px solid var(--ink); padding: 8px; text-align: left; }
               .table td { font: 400 14px var(--font-sans); padding: 12px 8px; border-bottom: 1px dashed color-mix(in oklab, var(--ink) 40%, transparent); }
@@ -1819,9 +1843,11 @@
               .corner.tr { top: 8px; right: 8px; border-left: 0; border-bottom: 0; }
               .corner.bl { bottom: 8px; left: 8px; border-right: 0; border-top: 0; }
               .corner.br { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
-
-              @keyframes blink { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
-              .blink { animation: blink 1s step-end infinite; }
+              
+              /* Strict ON/OFF blink for Terminal Cursor ONLY */
+              @keyframes cursor-blink { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
+              .cursor-blink { animation: cursor-blink 1s step-end infinite; }
+              
               @keyframes spin-slow { to { transform: rotate(360deg); } }
               .spin-slow { animation: spin-slow 30s linear infinite; }
               @keyframes flow { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
@@ -1857,7 +1883,7 @@
                   </div>
                   <div className="flex gap-3 sm:gap-6 items-center">
                     <span className="hidden sm:inline">CLEARANCE: {state.settings?.userDesignation || 'ENGINEER'}</span>
-                    <span className="flex items-center gap-2">NET LINK <div className="status-dot blink"></div></span>
+                    <span className="flex items-center gap-2">NET LINK <div className="w-2 h-2 bg-[var(--stamp)] inline-block"></div></span>
                   </div>
                 </div>
               </div>
