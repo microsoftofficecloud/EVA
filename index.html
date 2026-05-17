@@ -148,7 +148,7 @@
           <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-[calc(100vw-2rem)]">
             {toasts.map(t => (
               <div key={t.id} className="panel border-stamped p-3 sm:p-4 flex items-center gap-3 animate-in fade-in slide-in-from-right-5 bg-[var(--card)] pointer-events-auto" style={{ minWidth: 'min(320px, 100%)' }}>
-                <div className={`status-dot shrink-0 ${t.type === 'warning' || t.type === 'success' ? 'animate-pulse' : ''}`} style={{ background: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}></div>
+                <div className={`status-dot shrink-0`} style={{ background: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}></div>
                 <span className="label !mb-0 text-[10px] sm:text-sm tracking-widest leading-tight" style={{ color: t.type === 'warning' ? 'var(--stamp)' : 'var(--ink)' }}>
                   {t.type === 'warning' ? '⚠ WARNING' : t.type === 'success' ? '✓ LOGGED' : '◆ NOTICE'}: {t.message}
                 </span>
@@ -354,7 +354,7 @@
       useEffect(() => {
         let frameId;
         const tick = (time) => {
-          setPhase(time / 1000); // Perfect speed for a smooth flowing wave
+          setPhase(time / 2200); // Perfect speed for a smooth flowing wave
           frameId = requestAnimationFrame(tick);
         };
         frameId = requestAnimationFrame(tick);
@@ -809,7 +809,7 @@
                           </div>
                         </div>
                       ) : (
-                        <div className="label text-[var(--stamp)] text-[10px] sm:text-[12px] !mb-3 sm:!mb-5 flex items-center gap-2"><span className="blink">■</span> AWAITING CONVERGENCE</div>
+                        <div className="label text-[var(--stamp)] text-[10px] sm:text-[12px] !mb-3 sm:!mb-5 flex items-center gap-2"><span className="blink-3-phase">■</span> AWAITING CONVERGENCE</div>
                       )}
 
                       <div className="flex flex-wrap sm:flex-nowrap gap-2 sm:gap-3 mt-auto">
@@ -906,7 +906,7 @@
               <p className={`font-sans text-[12px] sm:text-[14px] leading-tight uppercase break-words pt-[1px] sm:pt-[2px] ${task.status === 'done' ? 'line-through text-[var(--muted-fg)]' : ''}`}>{task.title}</p>
               <div className="flex items-center gap-2 sm:gap-3 mt-2 sm:mt-3 flex-wrap">
                 {task.epic && <span className="label !mb-0 border border-[var(--ink)] px-1 sm:px-2 py-1 text-[9px] sm:text-[10px] bg-[var(--paper)]">REF: {task.epic}</span>}
-                {task.syllabusId && <span className="label !mb-0 text-[var(--stamp)] border border-[var(--stamp)] px-1 sm:px-2 py-1 text-[9px] sm:text-[10px] flex items-center gap-1 sm:gap-2 bg-[var(--paper)]"><span className="blink">■</span> CONVERGED</span>}
+                {task.syllabusId && <span className="label !mb-0 text-[var(--stamp)] border border-[var(--stamp)] px-1 sm:px-2 py-1 text-[9px] sm:text-[10px] flex items-center gap-1 sm:gap-2 bg-[var(--paper)]"><span className="blink-3-phase">■</span> CONVERGED</span>}
               </div>
             </div>
             <div className="flex flex-col items-end gap-2 sm:gap-3 shrink-0">
@@ -1820,6 +1820,7 @@
               .topbar { font-size: 11px; font-family: var(--font-sans); letter-spacing: 0.15em; background: var(--ink); color: var(--paper); }
               .topbar .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 16px; }
               @media (min-width: 640px) { .topbar .row { padding: 6px 24px; } }
+              .status-dot { width: 8px; height: 8px; background: var(--stamp); display: inline-block; }
 
               .table th { font: 500 11px var(--font-sans); text-transform: uppercase; letter-spacing: 0.25em; color: var(--muted-fg); border-bottom: 1px solid var(--ink); padding: 8px; text-align: left; }
               .table td { font: 400 14px var(--font-sans); padding: 12px 8px; border-bottom: 1px dashed color-mix(in oklab, var(--ink) 40%, transparent); }
@@ -1847,6 +1848,10 @@
               /* Strict ON/OFF blink for Terminal Cursor ONLY */
               @keyframes cursor-blink { 0%, 49.9% { opacity: 1; } 50%, 100% { opacity: 0; } }
               .cursor-blink { animation: cursor-blink 1s step-end infinite; }
+              
+              /* 3-Phase Blink for Indicators */
+              @keyframes blink-3-phase { 0% { opacity: 1; } 33% { opacity: 0.35; } 66% { opacity: 0; } 100% { opacity: 1; } }
+              .blink-3-phase { animation: blink-3-phase 1.2s step-end infinite; }
               
               @keyframes spin-slow { to { transform: rotate(360deg); } }
               .spin-slow { animation: spin-slow 30s linear infinite; }
@@ -1883,7 +1888,7 @@
                   </div>
                   <div className="flex gap-3 sm:gap-6 items-center">
                     <span className="hidden sm:inline">CLEARANCE: {state.settings?.userDesignation || 'ENGINEER'}</span>
-                    <span className="flex items-center gap-2">NET LINK <div className="w-2 h-2 bg-[var(--stamp)] inline-block"></div></span>
+                    <span className="flex items-center gap-2">NET LINK <div className="w-2 h-2 bg-[var(--stamp)] inline-block blink-3-phase"></div></span>
                   </div>
                 </div>
               </div>
@@ -1902,8 +1907,8 @@
                         <defs>
                           <path id="circle" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
                         </defs>
-                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="2.5">
-                          <textPath href="#circle">· ENGINEERING VARIANCE AUTHORITY · FOR ALL TIME · ALWAYS ·</textPath>
+                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="3.0">
+                          <textPath href="#circle">· ENGINEERING · FOR ALL TIME · ALWAYS ·</textPath>
                         </text>
                       </svg>
                       <div className="seal-center">
@@ -1961,8 +1966,8 @@
                         <defs>
                           <path id="circle-footer" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
                         </defs>
-                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="2.5">
-                          <textPath href="#circle-footer">· ENGINEERING VARIANCE AUTHORITY · FOR ALL TIME · ALWAYS ·</textPath>
+                        <text fontSize="8.5" fontFamily="VT323" fill="currentColor" letterSpacing="3.0">
+                          <textPath href="#circle-footer">· ENGINEERING · FOR ALL TIME · ALWAYS ·</textPath>
                         </text>
                       </svg>
                       <div className="seal-center absolute inset-0 flex items-center justify-center">
@@ -1970,9 +1975,9 @@
                       </div>
                     </div>
                     <div className="mt-6 font-display font-black text-3xl uppercase tracking-widest text-[var(--paper)] leading-none">
-                      ASCEND MATRIX
+                      ENGINEERING VARIANCE AUTHORITY
                     </div>
-                    <div className="text-[10px] font-sans uppercase tracking-[0.2em] opacity-60 mt-3 leading-relaxed">
+                    <div className="text-[11.25px] font-sans uppercase tracking-[0.2em] opacity-60 mt-3 leading-relaxed">
                       DEPARTMENT OF TEMPORAL ENGINEERING<br/>
                       AUTHORIZED PERSONNEL ONLY
                     </div>
